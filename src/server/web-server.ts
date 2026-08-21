@@ -255,7 +255,11 @@ export function createServer(): http.Server {
 
         if (!parsed.isValid || !parsed.videoId) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'ลิงก์ YouTube ไม่ถูกต้อง กรุณาตรวจสอบ URL อีกครั้ง' }));
+          res.end(JSON.stringify({ 
+            success: false, 
+            error: 'รูปแบบลิงก์ YouTube ไม่ถูกต้อง กรุณาใช้ URL เช่น https://www.youtube.com/watch?v=... หรือ https://youtu.be/...',
+            debug: { inputUrl: url, parsed }
+          }));
           return;
         }
 
@@ -276,7 +280,11 @@ export function createServer(): http.Server {
         res.end(JSON.stringify(result));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: String(err) }));
+        res.end(JSON.stringify({ 
+          success: false, 
+          error: `เกิดข้อผิดพลาดในการดึงข้อมูล: ${String(err)}`,
+          stack: err instanceof Error ? err.stack : undefined
+        }));
       }
       return;
     }
@@ -332,7 +340,11 @@ export function createServer(): http.Server {
         res.end(JSON.stringify(result));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: String(err) }));
+        res.end(JSON.stringify({ 
+          success: false, 
+          error: `เกิดข้อผิดพลาดในการสร้างคู่มือ: ${String(err)}`,
+          stack: err instanceof Error ? err.stack : undefined
+        }));
       }
       return;
     }
@@ -395,6 +407,11 @@ function renderHtmlApp(ssr?: SsrState): string {
   <style>
     body { font-family: 'Plus Jakarta Sans', 'Sarabun', sans-serif; }
     code, pre { font-family: 'Fira Code', monospace; }
+    @keyframes pulse-fast {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.03); }
+    }
+    .pulse-step { animation: pulse-fast 1.5s infinite ease-in-out; }
   </style>
 </head>
 <body class="min-h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
@@ -503,7 +520,7 @@ function renderHtmlApp(ssr?: SsrState): string {
       <!-- Tab 1: YouTube Input -->
       <div id="tab-yt-content" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">วางลิงก์ YouTube Video หรือ Playlist (กด Enter หรือกดสร้างได้ทันที)</label>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">วางลิงก์ YouTube Video หรือ Playlist (กด Enter หรือกดปุ่มสร้างได้ทันที)</label>
           <div class="flex flex-col sm:flex-row gap-3">
             <input id="yt-url-input" type="text" placeholder="https://www.youtube.com/watch?v=... หรือ Playlist URL" 
               class="flex-1 bg-slate-950/80 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" />
@@ -527,6 +544,45 @@ function renderHtmlApp(ssr?: SsrState): string {
           </div>
           <textarea id="subtitle-textarea" rows="6" placeholder="00:00:00.000 --> 00:00:05.000&#10;สวัสดีครับ วันนี้เราจะมาเรียนรู้วิธีติดตั้งโปรแกรม..."
             class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl p-4 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"></textarea>
+        </div>
+      </div>
+
+      <!-- Live Step-by-Step Progress Animation Box -->
+      <div id="progress-stepper-box" class="hidden rounded-xl bg-slate-950/90 border border-indigo-500/40 p-5 space-y-4 shadow-xl">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-indigo-300 flex items-center gap-2">
+            <span class="animate-spin text-sm">🌀</span>
+            <span id="stepper-main-status">กำลังดำเนินการ...</span>
+          </span>
+          <span id="stepper-elapsed-time" class="text-xs font-mono text-slate-400">0s</span>
+        </div>
+        
+        <!-- Steps Timeline Indicator -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+          <!-- Step 1 -->
+          <div id="step-node-1" class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition">
+            <div id="step-icon-1" class="h-7 w-7 rounded-lg bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400">1</div>
+            <div>
+              <div class="text-xs font-bold text-slate-300">ดึง Transcript</div>
+              <div id="step-sub-1" class="text-[11px] text-slate-500">yt-dlp Extraction</div>
+            </div>
+          </div>
+          <!-- Step 2 -->
+          <div id="step-node-2" class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition">
+            <div id="step-icon-2" class="h-7 w-7 rounded-lg bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400">2</div>
+            <div>
+              <div class="text-xs font-bold text-slate-300">วิเคราะห์ฟังก์ชัน</div>
+              <div id="step-sub-2" class="text-[11px] text-slate-500">AI Synthesis</div>
+            </div>
+          </div>
+          <!-- Step 3 -->
+          <div id="step-node-3" class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition">
+            <div id="step-icon-3" class="h-7 w-7 rounded-lg bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400">3</div>
+            <div>
+              <div class="text-xs font-bold text-slate-300">สร้างคู่มือ & คลัง</div>
+              <div id="step-sub-3" class="text-[11px] text-slate-500">Render & Save .md</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -556,6 +612,41 @@ function renderHtmlApp(ssr?: SsrState): string {
           <span>✨</span>
           <span id="generate-btn-text">สร้างคู่มือการใช้งาน (1-Click Generate)</span>
         </button>
+      </div>
+
+      <!-- Enhanced Error Diagnostic Box with 1-Click Copy -->
+      <div id="error-diagnostic-box" class="hidden rounded-xl bg-rose-950/70 border border-rose-800/90 p-5 space-y-3 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-rose-300 font-bold text-xs">
+            <span class="text-base">⚠️</span>
+            <span id="error-title-text">เกิดข้อผิดพลาดในการประมวลผล</span>
+          </div>
+          <button onclick="copyErrorDiagnostics()" class="px-3 py-1.5 bg-rose-900/90 hover:bg-rose-800 border border-rose-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow">
+            <span>📋</span>
+            <span id="copy-err-btn-text">คัดลอก Error ทั้งหมดไปให้ AI ดู</span>
+          </button>
+        </div>
+        <p id="error-summary-msg" class="text-xs text-rose-200 leading-relaxed"></p>
+        <div class="bg-slate-950/90 border border-rose-900/60 rounded-lg p-3 max-h-36 overflow-y-auto">
+          <pre id="error-raw-stack" class="text-[11px] font-mono text-rose-300 whitespace-pre-wrap leading-tight"></pre>
+        </div>
+      </div>
+
+      <!-- Live Terminal Activity / Debug Log (Collapsible) -->
+      <div class="pt-2 border-t border-slate-800/60">
+        <div class="flex items-center justify-between mb-2">
+          <button onclick="toggleTerminalLogs()" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5">
+            <span>🖥️</span>
+            <span>Live Activity / Debug Log (<span id="log-count">0</span> รายการ)</span>
+            <span id="log-toggle-arrow" class="text-[10px] transition">▼</span>
+          </button>
+          <button onclick="copyTerminalLogs()" class="text-[11px] text-indigo-400 hover:text-indigo-300 underline">
+            📋 คัดลอก Logs ทั้งหมด
+          </button>
+        </div>
+        <div id="terminal-log-container" class="hidden bg-slate-950 border border-slate-800 rounded-xl p-3.5 max-h-48 overflow-y-auto font-mono text-[11px] text-slate-400 space-y-1">
+          <div class="text-slate-600">[System] พร้อมรับคำสั่ง...</div>
+        </div>
       </div>
 
       <!-- Alert Box -->
@@ -666,6 +757,10 @@ function renderHtmlApp(ssr?: SsrState): string {
     let currentMarkdownOutput = '';
     let allLoadedManuals = [];
     let selectedCategory = 'all';
+    let lastErrorPayload = null;
+    let activityLogs = [];
+    let stepperTimer = null;
+    let stepperStartTime = 0;
 
     function initApp() {
       fetchDashboardStats();
@@ -684,18 +779,151 @@ function renderHtmlApp(ssr?: SsrState): string {
           }
         });
       }
+      logEvent('info', 'ClipToManual UI Initialized');
     }
 
-    // Run immediately and also on DOMContentLoaded
     initApp();
     window.addEventListener('DOMContentLoaded', initApp);
+
+    function logEvent(type, message, details) {
+      const now = new Date().toTimeString().slice(0, 8);
+      const logItem = { time: now, type, message, details };
+      activityLogs.push(logItem);
+
+      const countEl = document.getElementById('log-count');
+      if (countEl) countEl.textContent = activityLogs.length;
+
+      const container = document.getElementById('terminal-log-container');
+      if (container) {
+        const color = type === 'error' ? 'text-rose-400' : (type === 'success' ? 'text-emerald-400' : 'text-slate-300');
+        const icon = type === 'error' ? '❌' : (type === 'success' ? '✅' : '🔹');
+        const entry = document.createElement('div');
+        entry.className = 'flex items-start gap-1.5 ' + color;
+        entry.innerHTML = '<span class="text-slate-600 shrink-0">[' + now + ']</span><span>' + icon + ' ' + escapeHtml(message) + '</span>';
+        container.appendChild(entry);
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function toggleTerminalLogs() {
+      const container = document.getElementById('terminal-log-container');
+      const arrow = document.getElementById('log-toggle-arrow');
+      if (container) {
+        container.classList.toggle('hidden');
+        if (arrow) arrow.textContent = container.classList.contains('hidden') ? '▼' : '▲';
+      }
+    }
+
+    function copyTerminalLogs() {
+      if (activityLogs.length === 0) return;
+      const text = activityLogs.map(l => '[' + l.time + '] [' + l.type.toUpperCase() + '] ' + l.message + (l.details ? ' -> ' + JSON.stringify(l.details) : '')).join('\n');
+      navigator.clipboard.writeText(text);
+      showAlert('คัดลอก Logs ทั้งหมดลงคลิปบอร์ดแล้ว', 'success');
+    }
 
     function fillDemoUrl() {
       const demoUrl = 'https://www.youtube.com/watch?v=k85mRPqvMbE';
       const inputEl = document.getElementById('yt-url-input');
       if (inputEl) inputEl.value = demoUrl;
       switchInputTab('yt');
+      logEvent('info', 'โหลดลิงก์ตัวอย่าง YouTube สำเร็จ');
       showAlert('ใส่ลิงก์คลิปตัวอย่างเรียบร้อยแล้ว กดปุ่ม "สร้างคู่มือการใช้งาน" ได้ทันทีครับ', 'success');
+    }
+
+    function startStepper() {
+      const box = document.getElementById('progress-stepper-box');
+      if (box) box.classList.remove('hidden');
+      stepperStartTime = Date.now();
+      
+      const timeEl = document.getElementById('stepper-elapsed-time');
+      if (stepperTimer) clearInterval(stepperTimer);
+      stepperTimer = setInterval(() => {
+        const sec = Math.floor((Date.now() - stepperStartTime) / 1000);
+        if (timeEl) timeEl.textContent = sec + 's';
+      }, 500);
+      
+      setStepActive(1);
+    }
+
+    function stopStepper() {
+      if (stepperTimer) {
+        clearInterval(stepperTimer);
+        stepperTimer = null;
+      }
+      const box = document.getElementById('progress-stepper-box');
+      if (box) box.classList.add('hidden');
+    }
+
+    function setStepActive(stepNum, statusText) {
+      const mainStatus = document.getElementById('stepper-main-status');
+      if (mainStatus && statusText) mainStatus.textContent = statusText;
+
+      for (let i = 1; i <= 3; i++) {
+        const node = document.getElementById('step-node-' + i);
+        const icon = document.getElementById('step-icon-' + i);
+        if (!node || !icon) continue;
+
+        if (i < stepNum) {
+          node.className = 'bg-emerald-950/60 border border-emerald-800/80 rounded-xl p-3 flex items-center gap-3 transition';
+          icon.className = 'h-7 w-7 rounded-lg bg-emerald-900 text-emerald-300 flex items-center justify-center text-xs font-bold';
+          icon.innerHTML = '✓';
+        } else if (i === stepNum) {
+          node.className = 'bg-indigo-950/80 border border-indigo-500 rounded-xl p-3 flex items-center gap-3 transition shadow-lg shadow-indigo-500/20 pulse-step';
+          icon.className = 'h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold animate-spin';
+          icon.innerHTML = '🌀';
+        } else {
+          node.className = 'bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3 transition opacity-50';
+          icon.className = 'h-7 w-7 rounded-lg bg-slate-800 text-slate-500 flex items-center justify-center text-xs font-bold';
+          icon.innerHTML = i;
+        }
+      }
+    }
+
+    function showErrorDiagnostic(title, message, errorObject) {
+      hideAlert();
+      lastErrorPayload = {
+        timestamp: new Date().toISOString(),
+        title,
+        message,
+        url: currentVideoUrl || (document.getElementById('yt-url-input')?.value || ''),
+        rawError: errorObject || message,
+        system: {
+          userAgent: navigator.userAgent,
+          localStorageKeyConfigured: Boolean(localStorage.getItem('gemini_api_key'))
+        }
+      };
+
+      logEvent('error', title + ': ' + message, lastErrorPayload);
+
+      const errBox = document.getElementById('error-diagnostic-box');
+      const titleEl = document.getElementById('error-title-text');
+      const msgEl = document.getElementById('error-summary-msg');
+      const stackEl = document.getElementById('error-raw-stack');
+
+      if (titleEl) titleEl.textContent = title;
+      if (msgEl) msgEl.textContent = message;
+      if (stackEl) stackEl.textContent = typeof errorObject === 'object' ? JSON.stringify(errorObject, null, 2) : String(errorObject || message);
+      if (errBox) {
+        errBox.classList.remove('hidden');
+        errBox.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function hideErrorDiagnostic() {
+      const errBox = document.getElementById('error-diagnostic-box');
+      if (errBox) errBox.classList.add('hidden');
+    }
+
+    function copyErrorDiagnostics() {
+      if (!lastErrorPayload) return;
+      const fence = String.fromCharCode(96, 96, 96);
+      const text = fence + 'json\n' + JSON.stringify(lastErrorPayload, null, 2) + '\n' + fence;
+      navigator.clipboard.writeText(text);
+      const btnText = document.getElementById('copy-err-btn-text');
+      if (btnText) {
+        btnText.textContent = '✅ คัดลอกสำเร็จแล้ว!';
+        setTimeout(() => { btnText.textContent = 'คัดลอก Error ทั้งหมดไปให้ AI ดู'; }, 3000);
+      }
     }
 
     async function fetchDashboardStats() {
@@ -872,7 +1100,7 @@ function renderHtmlApp(ssr?: SsrState): string {
           outContainer.scrollIntoView({ behavior: 'smooth' });
         }
       } catch (err) {
-        showAlert('ไม่สามารถเปิดไฟล์คู่มือได้: ' + err.message, 'error');
+        showErrorDiagnostic('เปิดไฟล์คู่มือไม่สำเร็จ', err.message, err);
       }
     }
 
@@ -959,6 +1187,7 @@ function renderHtmlApp(ssr?: SsrState): string {
 
     async function parseUploadedSubtitle(content) {
       try {
+        logEvent('info', 'กำลังแปลงข้อความ Subtitle ที่อัปโหลด...');
         const res = await fetch('/api/parse-subtitle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -969,15 +1198,17 @@ function renderHtmlApp(ssr?: SsrState): string {
           currentRawTranscript = data.fullText;
           showTranscriptPreview(data.segments, data.count + ' รายการเวลา');
           showAlert('นำเข้าซับไตเติลสำเร็จ ' + data.count + ' ข้อความ', 'success');
+          logEvent('success', 'แปลง Subtitle สำเร็จ ' + data.count + ' ข้อความ');
         } else {
-          showAlert(data.error || 'เกิดข้อผิดพลาดในการประมวลผลซับไตเติล', 'error');
+          showErrorDiagnostic('การแปลง Subtitle ผิดพลาด', data.error, data);
         }
       } catch (err) {
-        showAlert('ข้อผิดพลาดเครือข่าย: ' + err.message, 'error');
+        showErrorDiagnostic('ข้อผิดพลาดเครือข่าย', err.message, err);
       }
     }
 
     async function fetchYouTubeTranscript() {
+      hideErrorDiagnostic();
       const inputEl = document.getElementById('yt-url-input');
       const url = inputEl ? inputEl.value.trim() : '';
       if (!url) {
@@ -986,7 +1217,9 @@ function renderHtmlApp(ssr?: SsrState): string {
       }
 
       currentVideoUrl = url;
-      setLoading(true, 'กำลังดึงซับไตเติลและข้อมูลจาก YouTube ผ่าน yt-dlp...');
+      logEvent('info', 'กำลังดึง Transcript จาก URL: ' + url);
+      setLoading(true, 'กำลังดึงซับไตเติลผ่าน yt-dlp...');
+      setStepActive(1, '[1/3] กำลังดึงข้อมูลและ Subtitle จาก YouTube...');
 
       try {
         const res = await fetch('/api/extract', {
@@ -1000,13 +1233,18 @@ function renderHtmlApp(ssr?: SsrState): string {
           currentRawTranscript = data.fullText;
           showTranscriptPreview(data.segments, (data.metadata?.title || 'คลิปวิดีโอ') + ' (' + data.segments.length + ' รายการ)');
           showAlert('ดึงซับไตเติลสำเร็จ (' + data.segments.length + ' ข้อความ)', 'success');
+          logEvent('success', 'ดึง Transcript สำเร็จ: ' + (data.metadata?.title || '') + ' (' + data.segments.length + ' ตอน)');
           return true;
         } else {
-          showAlert(data.error || 'ไม่พบซับไตเติลอัตโนมัติของคลิปนี้ คุณสามารถเลือกแท็บ Subtitle เพื่อวางข้อความซับไตเติลหรือไฟล์ .vtt/.srt ได้ครับ', 'error');
+          showErrorDiagnostic(
+            'ไม่พบ Transcript หรือซับไตเติลของคลิปนี้',
+            data.error || 'คลิปนี้อาจไม่มีซับไตเติลอัตโนมัติ หรือ YouTube บล็อกคำขอ คุณสามารถเลือกแท็บ Subtitle ด้านบนเพื่อวางข้อความเองได้ครับ',
+            data
+          );
           return false;
         }
       } catch (err) {
-        showAlert('ข้อผิดพลาดเครือข่าย: ' + err.message, 'error');
+        showErrorDiagnostic('ข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', err.message, err);
         return false;
       } finally {
         setLoading(false);
@@ -1031,19 +1269,26 @@ function renderHtmlApp(ssr?: SsrState): string {
     }
 
     async function generateManualAction() {
+      hideErrorDiagnostic();
+      hideAlert();
+
       let transcript = currentRawTranscript;
       const urlInput = document.getElementById('yt-url-input');
       const urlVal = urlInput ? urlInput.value.trim() : '';
       const subArea = document.getElementById('subtitle-textarea');
       const subText = subArea ? subArea.value.trim() : '';
 
+      startStepper();
+
       // If transcript not yet extracted, but YouTube URL is provided: Auto 1-Click Pull!
       if (!transcript && urlVal) {
-        setLoading(true, '[1/2] 📥 กำลังดึงข้อมูลและซับไตเติลจาก YouTube...');
+        setLoading(true, '[1/3] 📥 กำลังดึงซับไตเติล...');
+        setStepActive(1, '[1/3] 📥 กำลังดึงข้อมูลและ Subtitle จาก YouTube...');
         const fetched = await fetchYouTubeTranscript();
         if (fetched) {
           transcript = currentRawTranscript;
         } else {
+          stopStepper();
           setLoading(false);
           return;
         }
@@ -1052,7 +1297,8 @@ function renderHtmlApp(ssr?: SsrState): string {
       }
 
       if (!transcript) {
-        showAlert('กรุณาวาง YouTube URL หรือข้อความ Subtitle ก่อนกดสร้างคู่มือครับ', 'error');
+        stopStepper();
+        showErrorDiagnostic('ยังไม่มีข้อมูลสำหรับสร้างคู่มือ', 'กรุณาวาง YouTube URL หรือข้อความ Subtitle ก่อนกดสร้างคู่มือครับ');
         return;
       }
 
@@ -1060,7 +1306,9 @@ function renderHtmlApp(ssr?: SsrState): string {
       const lang = langSelect ? langSelect.value : 'th';
       const apiKey = localStorage.getItem('gemini_api_key') || '';
 
-      setLoading(true, '[2/2] ✨ AI กำลังวิเคราะห์วิดีโอ สกัดฟังก์ชัน และเรียบเรียงคู่มือทีละ Step...');
+      setLoading(true, '[2/3] ✨ AI กำลังวิเคราะห์และเรียบเรียงคู่มือ...');
+      setStepActive(2, '[2/3] ✨ AI กำลังวิเคราะห์ฟังก์ชันและจัดทำ Step-by-Step...');
+      logEvent('info', 'เริ่มประมวลผลสร้างคู่มือ (ภาษา: ' + lang + ', โหมด: ' + (apiKey ? 'Gemini AI' : 'Local Deterministic') + ')');
 
       try {
         const res = await fetch('/api/generate', {
@@ -1076,21 +1324,30 @@ function renderHtmlApp(ssr?: SsrState): string {
 
         const data = await res.json();
         if (data.success && data.manual) {
+          setStepActive(3, '[3/3] 💾 บันทึกคู่มือและสร้างคลังเสร็จสมบูรณ์!');
+          logEvent('success', 'สร้างคู่มือสำเร็จ: ' + data.manual.title);
           currentMarkdownOutput = data.markdown || '';
           renderManualUi(data.manual);
-          const outContainer = document.getElementById('output-container');
-          if (outContainer) {
-            outContainer.classList.remove('hidden');
-            outContainer.scrollIntoView({ behavior: 'smooth' });
-          }
+          
+          setTimeout(() => {
+            stopStepper();
+            const outContainer = document.getElementById('output-container');
+            if (outContainer) {
+              outContainer.classList.remove('hidden');
+              outContainer.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 800);
+
           fetchDashboardStats();
           loadManualsLibrary();
           showAlert('🎉 สร้างคู่มือการใช้งานสำเร็จและบันทึกลงคลังเรียบร้อย!', 'success');
         } else {
-          showAlert(data.error || 'เกิดข้อผิดพลาดในการสร้างคู่มือ', 'error');
+          stopStepper();
+          showErrorDiagnostic('เกิดข้อผิดพลาดในการสร้างคู่มือ', data.error || 'เซิร์ฟเวอร์ไม่สามารถสังเคราะห์คู่มือได้', data);
         }
       } catch (err) {
-        showAlert('ข้อผิดพลาดเครือข่าย: ' + err.message, 'error');
+        stopStepper();
+        showErrorDiagnostic('ข้อผิดพลาดการเชื่อมต่อ API /generate', err.message, err);
       } finally {
         setLoading(false);
       }
@@ -1258,6 +1515,11 @@ function renderHtmlApp(ssr?: SsrState): string {
       el.className = 'p-4 rounded-xl text-xs font-medium border ' + (type === 'success' ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200' : 'bg-rose-950/60 border-rose-800 text-rose-200');
       el.textContent = msg;
       el.classList.remove('hidden');
+    }
+
+    function hideAlert() {
+      const el = document.getElementById('status-alert');
+      if (el) el.classList.add('hidden');
     }
 
     function setLoading(isLoading, text = '') {
