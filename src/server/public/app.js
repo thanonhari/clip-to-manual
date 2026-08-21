@@ -271,6 +271,7 @@ function renderCategoryTabs() {
 }
 
 let currentViewMode = 'list';
+const expandedCourses = new Set(['KruBank Farm Studio']); // Default open KruBank course
 
 function setViewMode(mode) {
   currentViewMode = mode;
@@ -282,6 +283,15 @@ function setViewMode(mode) {
   } else {
     if (gridBtn) gridBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition flex items-center gap-1.5 shadow';
     if (listBtn) listBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5';
+  }
+  filterManualsGrid();
+}
+
+function toggleCourseAccordion(topicName) {
+  if (expandedCourses.has(topicName)) {
+    expandedCourses.delete(topicName);
+  } else {
+    expandedCourses.add(topicName);
   }
   filterManualsGrid();
 }
@@ -310,42 +320,110 @@ function filterManualsGrid() {
     return;
   }
 
+  // Group manuals by Course Topic (Course Hierarchy)
+  const courseGroups = {};
+  for (const m of filtered) {
+    const topic = m.topic || 'ทั่วไป';
+    if (!courseGroups[topic]) courseGroups[topic] = [];
+    courseGroups[topic].push(m);
+  }
+
   if (currentViewMode === 'list') {
-    container.className = 'space-y-2.5';
-    container.innerHTML = filtered.map(m => {
-      const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
-      const encFile = encodeURIComponent(m.fileName);
-      const cleanTitleEsc = escapeHtml(m.title).replace(/'/g, '&#039;');
-      return '<div class="bg-slate-950/90 border border-slate-800/90 hover:border-indigo-500/60 rounded-2xl p-3 sm:p-3.5 shadow-lg hover:shadow-xl transition flex flex-col md:flex-row md:items-center justify-between gap-3 group cursor-pointer" onclick="openManualDetails(\'' + encFile + '\')">' +
-        '<div class="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">' +
-          '<div class="relative w-24 sm:w-28 aspect-video rounded-xl overflow-hidden bg-slate-900 shrink-0 border border-slate-800">' +
-            '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + cleanTitleEsc + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
-            '<span class="absolute bottom-1 right-1 px-1.5 py-0.2 rounded bg-slate-950/80 text-white text-[9px] font-bold font-mono">' + (m.stepsCount ? m.stepsCount + ' Steps' : 'Guide') + '</span>' +
-          '</div>' +
-          '<div class="flex flex-col justify-center min-w-0 flex-1 space-y-1">' +
-            '<div class="flex items-center gap-2">' +
-              '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ' + badgeColor + '">' + escapeHtml(m.episode) + '</span>' +
-              '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-900 text-slate-300 border border-slate-700 shrink-0 truncate max-w-[150px]">' + escapeHtml(m.topic) + '</span>' +
-              '<span class="text-[11px] text-slate-500 font-mono hidden sm:inline shrink-0">📅 ' + m.createdAt.slice(0, 10) + '</span>' +
+    container.className = 'space-y-4';
+    let html = '';
+
+    for (const [topicName, episodes] of Object.entries(courseGroups)) {
+      const isExpanded = expandedCourses.has(topicName);
+      const masterManual = episodes.find(e => e.isMaster) || episodes[0];
+      const masterEncFile = encodeURIComponent(masterManual.fileName);
+      const totalSizeKb = (episodes.reduce((acc, e) => acc + (e.sizeBytes || 0), 0) / 1024).toFixed(1);
+      const latestDate = episodes[0]?.createdAt.slice(0, 10) || '2026-08-21';
+      const arrowIcon = isExpanded ? '▲' : '▼';
+      const toggleText = isExpanded ? 'ซ่อนรายการตอน' : 'ดูรายชื่อ ' + episodes.length + ' ตอน';
+
+      // Master Course Header Row (1 บรรทัดหลักรวมทั้งคอร์ส)
+      html += '<div class="bg-slate-900/95 border border-indigo-900/80 hover:border-indigo-500/80 rounded-2xl p-4 shadow-xl transition space-y-3">' +
+        '<div class="flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer" onclick="toggleCourseAccordion(\'' + escapeHtml(topicName) + '\')">' +
+          '<div class="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">' +
+            '<div class="relative w-28 sm:w-32 aspect-video rounded-xl overflow-hidden bg-slate-950 shrink-0 border border-indigo-500/40 shadow-md">' +
+              '<img src="' + escapeHtml(masterManual.thumbnailUrl) + '" alt="' + escapeHtml(topicName) + '" class="w-full h-full object-cover" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
+              '<span class="absolute top-1 left-1 px-1.5 py-0.2 rounded bg-indigo-950/90 text-indigo-300 text-[9px] font-bold border border-indigo-700/80">ชุดคอร์ส</span>' +
+              '<span class="absolute bottom-1 right-1 px-1.5 py-0.2 rounded bg-slate-950/90 text-white text-[9px] font-bold font-mono">' + episodes.length + ' ตอน</span>' +
             '</div>' +
-            '<h3 class="text-xs sm:text-sm font-bold text-slate-100 truncate group-hover:text-indigo-400 transition" title="' + cleanTitleEsc + '">' + cleanTitleEsc + '</h3>' +
+            '<div class="flex flex-col justify-center min-w-0 flex-1 space-y-1">' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800 shrink-0">🎓 ชุดคอร์ส (' + episodes.length + ' ตอน)</span>' +
+                '<span class="text-[11px] text-slate-400 font-mono hidden sm:inline">📅 อัปเดตล่าสุด ' + latestDate + '</span>' +
+                '<span class="text-[11px] text-slate-500 hidden md:inline">• รวม ' + totalSizeKb + ' KB</span>' +
+              '</div>' +
+              '<h3 class="text-sm sm:text-base font-bold text-white truncate group-hover:text-indigo-400 transition flex items-center gap-2">' +
+                '<span>' + escapeHtml(topicName) + '</span>' +
+                '<span class="text-xs text-indigo-400 font-normal hidden lg:inline">- รวมคู่มือการใช้งานฉบับสมบูรณ์</span>' +
+              '</h3>' +
+            '</div>' +
           '</div>' +
-        '</div>' +
-        '<div class="flex items-center justify-between md:justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800/80" onclick="event.stopPropagation()">' +
-          '<button onclick="openManualDetails(\'' + encFile + '\')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center gap-1 shadow">' +
-            '<span>🔍</span> <span class="hidden sm:inline">รายละเอียด</span>' +
-          '</button>' +
-          '<button onclick="viewSavedManual(\'' + encFile + '\')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition flex items-center gap-1 shadow-md">' +
-            '<span>📖</span> <span>เปิดอ่าน</span>' +
-          '</button>' +
-          '<button onclick="deleteManual(\'' + encFile + '\', \'' + cleanTitleEsc + '\')" class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-900/80 text-rose-300 rounded-lg text-xs transition shadow" title="ลบคู่มือนี้">' +
-            '<span>🗑️</span>' +
-          '</button>' +
-          (m.videoId ? '<a href="https://www.youtube.com/watch?v=' + m.videoId + '" target="_blank" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition" title="ดูคลิปบน YouTube">🎥</a>' : '') +
-        '</div>' +
-      '</div>';
-    }).join('');
+          '<div class="flex items-center justify-between md:justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800/80" onclick="event.stopPropagation()">' +
+            '<button onclick="toggleCourseAccordion(\'' + escapeHtml(topicName) + '\')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center gap-1.5 shadow">' +
+              '<span>📂</span> <span>' + toggleText + '</span> <span class="text-[10px]">' + arrowIcon + '</span>' +
+            '</button>' +
+            '<button onclick="viewSavedManual(\'' + masterEncFile + '\')" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition flex items-center gap-1.5 shadow-md">' +
+              '<span>📖</span> <span>เปิดอ่านรวม</span>' +
+            '</button>' +
+            '<button onclick="deleteCourseSeries(\'' + escapeHtml(topicName) + '\')" class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-900/80 text-rose-300 rounded-lg text-xs transition shadow" title="ลบทั้งคอร์ส">' +
+              '<span>🗑️</span>' +
+            '</button>' +
+          '</div>' +
+        '</div>';
+
+      // Expanded Nested Episodes List (รายชื่อตอนย่อยในคอร์ส กางออกมาเมื่อคลิก)
+      if (isExpanded) {
+        html += '<div class="pt-3 border-t border-slate-800/80 space-y-2 pl-2 sm:pl-6 bg-slate-950/50 rounded-xl p-3">' +
+          '<div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">' +
+            '<span>📑</span> <span>รายการตอนย่อยในคอร์ส ' + escapeHtml(topicName) + ' (' + episodes.length + ' ตอน):</span>' +
+          '</div>';
+
+        for (const ep of episodes) {
+          const epEncFile = encodeURIComponent(ep.fileName);
+          const epTitleEsc = escapeHtml(ep.title).replace(/'/g, '&#039;');
+          const epBadgeColor = ep.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-slate-800 text-slate-300 border-slate-700';
+
+          html += '<div class="bg-slate-900/80 border border-slate-800/80 hover:border-slate-700 rounded-xl p-2.5 sm:p-3 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 group hover:bg-slate-900">' +
+            '<div class="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onclick="openManualDetails(\'' + epEncFile + '\')">' +
+              '<div class="relative w-16 sm:w-20 aspect-video rounded-lg overflow-hidden bg-slate-950 shrink-0 border border-slate-800">' +
+                '<img src="' + escapeHtml(ep.thumbnailUrl) + '" alt="' + epTitleEsc + '" class="w-full h-full object-cover">' +
+              '</div>' +
+              '<div class="min-w-0 flex-1">' +
+                '<div class="flex items-center gap-2 mb-0.5">' +
+                  '<span class="px-2 py-0.2 rounded text-[10px] font-bold border shrink-0 ' + epBadgeColor + '">' + escapeHtml(ep.episode) + '</span>' +
+                  '<span class="text-[10px] text-slate-500 font-mono hidden md:inline">📅 ' + ep.createdAt.slice(0, 10) + '</span>' +
+                '</div>' +
+                '<h4 class="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-400 transition" title="' + epTitleEsc + '">' + epTitleEsc + '</h4>' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex items-center justify-end gap-1.5 shrink-0 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-800/60">' +
+              '<button onclick="openManualDetails(\'' + epEncFile + '\')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition flex items-center gap-1 shadow">' +
+                '<span>🔍 รายละเอียด</span>' +
+              '</button>' +
+              '<button onclick="viewSavedManual(\'' + epEncFile + '\')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg text-xs transition flex items-center gap-1 shadow">' +
+                '<span>📖 อ่าน</span>' +
+              '</button>' +
+              '<button onclick="deleteManual(\'' + epEncFile + '\', \'' + epTitleEsc + '\')" class="p-1 bg-rose-950/40 hover:bg-rose-900 border border-rose-900/60 text-rose-300 rounded-lg text-xs transition" title="ลบตอนนี้">' +
+                '<span>🗑️</span>' +
+              '</button>' +
+              (ep.videoId ? '<a href="https://www.youtube.com/watch?v=' + ep.videoId + '" target="_blank" class="p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs transition" title="ดูบน YouTube">🎥</a>' : '') +
+            '</div>' +
+          '</div>';
+        }
+
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
   } else {
+    // Grid View
     container.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
     container.innerHTML = filtered.map(m => {
       const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
@@ -385,6 +463,30 @@ function filterManualsGrid() {
         '</div>' +
       '</div>';
     }).join('');
+  }
+}
+
+async function deleteCourseSeries(topicName) {
+  const episodes = allLoadedManuals.filter(m => m.topic === topicName);
+  if (episodes.length === 0) return;
+
+  if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบทั้งชุดคอร์ส "' + topicName + '" (' + episodes.length + ' ตอน) ออกจากเครื่อง?')) {
+    return;
+  }
+
+  try {
+    logEvent('info', 'กำลังลบทั้งชุดคอร์ส: ' + topicName + ' (' + episodes.length + ' ตอน)');
+    for (const ep of episodes) {
+      await fetch('/api/manuals/' + encodeURIComponent(ep.fileName), { method: 'DELETE' });
+    }
+    closeManualDetailsModal();
+    closeManualView();
+    await fetchDashboardStats();
+    await loadManualsLibrary();
+    showToast('🗑️ ลบชุดคอร์ส "' + topicName + '" เรียบร้อยแล้ว');
+    logEvent('success', 'ลบทั้งชุดคอร์สสำเร็จ: ' + topicName);
+  } catch (err) {
+    showErrorDiagnostic('ข้อผิดพลาดในการลบชุดคอร์ส', err.message, err);
   }
 }
 
@@ -1096,5 +1198,7 @@ Object.assign(window, {
   scrollToTop,
   scrollToBottom,
   setViewMode,
-  deleteManual
+  deleteManual,
+  toggleCourseAccordion,
+  deleteCourseSeries
 });
