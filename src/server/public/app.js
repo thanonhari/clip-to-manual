@@ -74,11 +74,11 @@ function copyTerminalLogs() {
 }
 
 function fillDemoUrl() {
-  const demoUrl = 'https://www.youtube.com/watch?v=k85mRPqvMbE';
+  const demoUrl = 'https://www.youtube.com/watch?v=kqtD5dpn9C8';
   const inputEl = document.getElementById('yt-url-input');
   if (inputEl) inputEl.value = demoUrl;
   switchInputTab('yt');
-  logEvent('info', 'โหลดลิงก์ตัวอย่าง YouTube สำเร็จ');
+  logEvent('info', 'โหลดลิงก์ตัวอย่าง Python Tutorial สำเร็จ');
   showAlert('ใส่ลิงก์คลิปตัวอย่างเรียบร้อยแล้ว กดปุ่ม "สร้างคู่มือการใช้งาน" ได้ทันทีครับ', 'success');
 }
 

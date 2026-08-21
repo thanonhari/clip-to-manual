@@ -259,8 +259,17 @@ export function parseVttOrSrt(content: string): TranscriptSegment[] {
         const endTotal = endHrs * 3600 + endMins * 60 + endSecs + endMs / 1000;
         currentDur = Math.max(0, endTotal - currentStart);
       }
-    } else if (trimmed.length > 0 && !trimmed.startsWith('WEBVTT') && !/^\d+$/.test(trimmed)) {
-      currentTextLines.push(trimmed);
+    } else if (trimmed.length > 0) {
+      const isMetadata = 
+        trimmed.startsWith('WEBVTT') || 
+        trimmed.startsWith('Kind:') || 
+        trimmed.startsWith('Language:') || 
+        trimmed.startsWith('NOTE') || 
+        trimmed.startsWith('STYLE') || 
+        /^\d+$/.test(trimmed);
+      if (!isMetadata) {
+        currentTextLines.push(trimmed);
+      }
     }
   }
 

@@ -51,50 +51,67 @@ async function callGeminiApi(
   const systemPrompt = buildSystemPrompt(language);
   const userPrompt = buildUserPrompt(transcript, undefined, language);
 
-  const model = 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const candidateModels = [
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-2.5-flash',
+    'gemini-pro-latest'
+  ];
 
-  const payload = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      responseMimeType: 'application/json'
-    }
-  };
+  let lastError: Error | null = null;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  for (const model of candidateModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errorBody}`);
-  }
-
-  const jsonResult = (await response.json()) as {
-    candidates?: Array<{
-      content?: {
-        parts?: Array<{ text?: string }>;
+      const payload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: 'application/json'
+        }
       };
-    }>;
-  };
 
-  const textOutput = jsonResult.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!textOutput) {
-    throw new Error('Gemini API returned an empty response.');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Gemini API error (${response.status}) on ${model}: ${errorBody}`);
+      }
+
+      const jsonResult = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: string }>;
+          };
+        }>;
+      };
+
+      const textOutput = jsonResult.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!textOutput) {
+        throw new Error(`Gemini model ${model} returned empty content.`);
+      }
+
+      const cleanJson = textOutput.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      const parsed = JSON.parse(cleanJson) as Record<string, unknown>;
+
+      return sanitizeToSoftwareManual(parsed, sourceUrl ?? '', language);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Continue to next model in fallback list
+    }
   }
 
-  const cleanJson = textOutput.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-  const parsed = JSON.parse(cleanJson) as Record<string, unknown>;
-
-  return sanitizeToSoftwareManual(parsed, sourceUrl ?? '', language);
+  throw lastError ?? new Error('All Gemini models failed to generate content.');
 }
 
 function sanitizeToSoftwareManual(raw: Record<string, unknown>, sourceUrl: string, language: 'th' | 'en'): SoftwareManual {
