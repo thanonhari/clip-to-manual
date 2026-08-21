@@ -363,11 +363,14 @@ function filterManualsGrid() {
             '</div>' +
           '</div>' +
           '<div class="flex items-center justify-between md:justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800/80" onclick="event.stopPropagation()">' +
-            '<button onclick="toggleCourseAccordion(\'' + escapeHtml(topicName) + '\')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center gap-1.5 shadow">' +
+            '<button onclick="toggleCourseAccordion(\'' + escapeHtml(topicName) + '\')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center gap-1.5 shadow">' +
               '<span>📂</span> <span>' + toggleText + '</span> <span class="text-[10px]">' + arrowIcon + '</span>' +
             '</button>' +
-            '<button onclick="viewSavedManual(\'' + masterEncFile + '\')" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition flex items-center gap-1.5 shadow-md">' +
-              '<span>📖</span> <span>เปิดอ่านรวม</span>' +
+            '<button onclick="viewCourseBundle(\'' + escapeHtml(topicName) + '\')" class="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-lg transition flex items-center gap-1 shadow-md" title="เปิดอ่าน E-Book รวมเล่ม">' +
+              '<span>📥</span> <span>รวมเล่ม E-Book</span>' +
+            '</button>' +
+            '<button onclick="viewSavedManual(\'' + masterEncFile + '\')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition flex items-center gap-1 shadow-md">' +
+              '<span>📖</span> <span>เปิดอ่าน</span>' +
             '</button>' +
             '<button onclick="deleteCourseSeries(\'' + escapeHtml(topicName) + '\')" class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-900/80 text-rose-300 rounded-lg text-xs transition shadow" title="ลบทั้งคอร์ส">' +
               '<span>🗑️</span>' +
@@ -1159,6 +1162,91 @@ function showToast(msg) {
   }, 3500);
 }
 
+async function viewCourseBundle(topicName) {
+  try {
+    showToast('⏳ กำลังรวบรวม E-Book ทั้งชุดคอร์ส...');
+    logEvent('info', 'กำลังประมวลผล E-Book รวมเล่ม: ' + topicName);
+    const res = await fetch('/api/courses/' + encodeURIComponent(topicName) + '/bundle');
+    if (!res.ok) throw new Error('ไม่สามารถดึงข้อมูล E-Book ได้');
+    const bundleMd = await res.text();
+
+    currentMarkdownOutput = bundleMd;
+
+    const titleEl = document.getElementById('reading-manual-title');
+    if (titleEl) titleEl.textContent = topicName + ' - รวมเล่ม E-Book ฉบับสมบูรณ์';
+
+    const manualView = document.getElementById('manual-view');
+    if (manualView) manualView.innerHTML = renderMarkdownToHtml(bundleMd);
+
+    const outContainer = document.getElementById('output-container');
+    if (outContainer) {
+      outContainer.classList.remove('hidden');
+      outContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    showToast('📖 รวมเล่ม E-Book สำเร็จ! เปิดใน Reading View แล้ว');
+    logEvent('success', 'เปิดอ่าน E-Book รวมเล่มสำเร็จ: ' + topicName);
+  } catch (err) {
+    showErrorDiagnostic('รวมเล่ม E-Book ไม่สำเร็จ', err.message, err);
+  }
+}
+
+async function askAiManualQuestion() {
+  const inputEl = document.getElementById('chat-question-input');
+  const question = (inputEl ? inputEl.value : '').trim();
+  if (!question) {
+    showToast('⚠️ กรุณาพิมพ์คำถามที่ต้องการทราบ');
+    return;
+  }
+
+  const btn = document.getElementById('chat-ask-btn');
+  const respBox = document.getElementById('chat-response-box');
+  const answerEl = document.getElementById('chat-answer-text');
+  const refsEl = document.getElementById('chat-references-container');
+
+  if (btn) btn.innerHTML = '<span>⏳</span> <span>กำลังค้นหา...</span>';
+  if (respBox) respBox.classList.remove('hidden');
+  if (answerEl) answerEl.innerHTML = '<div class="text-slate-400 italic">🤖 AI กำลังค้นหาข้อมูลจากคลังคู่มือทั้งหมดและสรุปคำตอบ...</div>';
+  if (refsEl) refsEl.innerHTML = '';
+
+  try {
+    logEvent('info', 'ค้นหาคำตอบผ่าน AI Chat: ' + question);
+    const res = await fetch('/api/chat-manuals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      if (answerEl) answerEl.textContent = data.answer;
+      if (refsEl && data.references && data.references.length > 0) {
+        refsEl.innerHTML = '<span class="text-[11px] text-slate-500 font-semibold">อ้างอิงจาก:</span>' +
+          data.references.map(r => 
+            '<button onclick="viewSavedManual(\'' + encodeURIComponent(r.file) + '\')" class="px-2 py-0.5 rounded bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 text-[10px] transition truncate max-w-[200px]" title="คลิกเพื่อเปิดอ่าน: ' + escapeHtml(r.title) + '">' +
+              '📖 ' + escapeHtml(r.title) +
+            '</button>'
+          ).join('');
+      }
+      logEvent('success', 'AI ตอบคำถามสำเร็จ');
+    } else {
+      if (answerEl) answerEl.textContent = '❌ เกิดข้อผิดพลาด: ' + (data.error || 'ไม่สามารถประมวลผลได้');
+    }
+  } catch (err) {
+    if (answerEl) answerEl.textContent = '❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err.message;
+  } finally {
+    if (btn) btn.innerHTML = '<span>🚀</span> <span>ถาม AI</span>';
+  }
+}
+
+function fillChatQuestion(q) {
+  const inputEl = document.getElementById('chat-question-input');
+  if (inputEl) {
+    inputEl.value = q;
+    askAiManualQuestion();
+  }
+}
+
 // Expose functions globally for HTML onclick handlers
 Object.assign(window, {
   initApp,
@@ -1200,5 +1288,8 @@ Object.assign(window, {
   setViewMode,
   deleteManual,
   toggleCourseAccordion,
-  deleteCourseSeries
+  deleteCourseSeries,
+  viewCourseBundle,
+  askAiManualQuestion,
+  fillChatQuestion
 });

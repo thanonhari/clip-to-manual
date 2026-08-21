@@ -294,6 +294,165 @@ export function createServer(): http.Server {
       return;
     }
 
+    // API: Export Full Course E-Book / Bundle (Single Compiled Markdown)
+    if (req.method === 'GET' && pathname.startsWith('/api/courses/') && pathname.endsWith('/bundle')) {
+      try {
+        const topicRaw = decodeURIComponent(pathname.replace('/api/courses/', '').replace('/bundle', ''));
+        const files = await fs.readdir(manualsDir);
+        const mdFiles = files.filter(f => f.endsWith('.md'));
+
+        // Collect all manuals matching topic
+        const matched = [];
+        for (const file of mdFiles) {
+          const filePath = path.join(manualsDir, file);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const firstLine = content.split('\n')[0]?.replace(/^#\s*/, '') || file;
+          
+          let topic = 'ทั่วไป';
+          if (file.includes('KruBank') || file.startsWith('EP') || content.includes('KruBank') || content.includes('Farm')) {
+            topic = 'KruBank Farm Studio';
+          } else if (file.includes('Linter') || content.includes('Linter')) {
+            topic = 'TypeScript & Oxlint';
+          } else if (file.includes('Pinterest') || content.includes('Pinterest')) {
+            topic = 'Pinterest Media Studio';
+          } else if (file.includes('python') || content.includes('Python')) {
+            topic = 'Python & Programming';
+          }
+
+          if (topic === topicRaw) {
+            const epMatch = file.match(/EP(\d+)/i) ?? firstLine.match(/EP\.?(\d+)/i);
+            const epNum = epMatch?.[1] ? parseInt(epMatch[1], 10) : 999;
+            matched.push({ file, content, epNum, title: firstLine });
+          }
+        }
+
+        matched.sort((a, b) => a.epNum - b.epNum);
+
+        if (matched.length === 0) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: `No manuals found for course: ${topicRaw}` }));
+          return;
+        }
+
+        // Build Master E-Book Bundle
+        let bundleMd = `# 📚 ${topicRaw} - คู่มือการปฏิบัติงานฉบับสมบูรณ์ (Master E-Book)\n\n`;
+        bundleMd += `> **รวมเนื้อหาหลักสูตรฉบับสมบูรณ์ ${matched.length} ตอน**\n`;
+        bundleMd += `> จัดทำและรวบรวมโดย: ClipToManual AI Studio  \n`;
+        bundleMd += `> วันที่รวบรวมเล่ม: ${new Date().toISOString().slice(0, 10)}  \n\n`;
+        bundleMd += `---\n\n## 📑 สารบัญรวมทุกตอน (Master Table of Contents)\n\n`;
+
+        matched.forEach((m, idx) => {
+          bundleMd += `${idx + 1}. **[ตอนที่ ${m.epNum !== 999 ? m.epNum : idx + 1}: ${m.title}](#ตอนที่-${m.epNum !== 999 ? m.epNum : idx + 1})**\n`;
+        });
+
+        bundleMd += `\n---\n\n`;
+
+        matched.forEach((m, idx) => {
+          bundleMd += `<div style="page-break-before: always;"></div>\n\n`;
+          bundleMd += `# ตอนที่ ${m.epNum !== 999 ? m.epNum : idx + 1}\n\n`;
+          bundleMd += `${m.content}\n\n`;
+          bundleMd += `---\n\n`;
+        });
+
+        res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+        res.end(bundleMd);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: `Failed to compile bundle: ${String(err)}` }));
+      }
+      return;
+    }
+
+    // API: Chat with Manuals (RAG Search & AI Answer Engine)
+    if (req.method === 'POST' && pathname === '/api/chat-manuals') {
+      try {
+        const body = await readJsonBody<{ question?: string }>(req);
+        const question = body.question?.trim() || '';
+
+        if (!question) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Question is required' }));
+          return;
+        }
+
+        // Load all manuals
+        const files = await fs.readdir(manualsDir);
+        const mdFiles = files.filter(f => f.endsWith('.md'));
+        const allDocs = [];
+
+        for (const file of mdFiles) {
+          const filePath = path.join(manualsDir, file);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const firstLine = content.split('\n')[0]?.replace(/^#\s*/, '') || file;
+          allDocs.push({ file, title: firstLine, content });
+        }
+
+        // Rank documents by keyword matches
+        const qWords = question.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+        const scoredDocs = allDocs.map(doc => {
+          let score = 0;
+          const lowerContent = doc.content.toLowerCase();
+          const lowerTitle = doc.title.toLowerCase();
+          for (const w of qWords) {
+            if (lowerTitle.includes(w)) score += 5;
+            if (lowerContent.includes(w)) score += 1;
+          }
+          return { ...doc, score };
+        });
+
+        scoredDocs.sort((a, b) => b.score - a.score);
+        const topDocs = scoredDocs.slice(0, 3);
+        const contextText = topDocs.map(d => `--- คู่มือ: ${d.title} (ไฟล์: ${d.file}) ---\n${d.content.slice(0, 2500)}`).join('\n\n');
+
+        const activeKey = process.env.GEMINI_API_KEY;
+        let aiAnswer = '';
+
+        if (activeKey && activeKey.trim().length > 0) {
+          const candidateModels = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+          for (const model of candidateModels) {
+            try {
+              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(activeKey.trim())}`;
+              const prompt = `คุณคือ AI ผู้เชี่ยวชาญคู่มือปฏิบัติงาน (SOP & Manual Assistant)\nคำถามของผู้ใช้: "${question}"\n\nเนื้อหาคู่มือที่เกี่ยวข้อง:\n${contextText}\n\nคำสั่ง:\n1. จงตอบคำถามนี้เป็นภาษาไทยที่สุภาพ ชัดเจน และตรงประเด็นตามเนื้อหาคู่มือข้างต้น\n2. ระบุอย่างชัดเจนว่าขั้นตอนที่ผู้ใช้ถามอยู่ในตอนไหนหรือหัวข้อใด\n3. สรุปขั้นตอน 1-2-3 สั้นๆ ให้ทำตามได้ทันที`;
+
+              const geminiRes = await fetch(geminiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                  generationConfig: { temperature: 0.3 }
+                })
+              });
+
+              if (geminiRes.ok) {
+                const jsonRes = await geminiRes.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+                aiAnswer = jsonRes.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (aiAnswer) break;
+              }
+            } catch {
+              // Try next model
+            }
+          }
+        }
+
+        if (!aiAnswer) {
+          // Local fallback answer
+          aiAnswer = `จากการค้นหาในคลังคู่มือ พบเนื้อหาที่เกี่ยวข้องใน "${topDocs[0]?.title || 'คู่มือการใช้งาน'}":\n\n` +
+            (topDocs[0]?.content.slice(0, 600) || 'กรุณาเปิดอ่านคู่มือฉบับเต็มเพื่อดูขั้นตอนโดยละเอียด');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          answer: aiAnswer,
+          references: topDocs.map(d => ({ file: d.file, title: d.title }))
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: String(err) }));
+      }
+      return;
+    }
+
     // API: Extract transcript from YouTube URL
     if (req.method === 'POST' && pathname === '/api/extract') {
       try {
@@ -846,6 +1005,47 @@ function renderHtmlApp(ssr?: SsrState): string {
 
       <!-- Alert Box -->
       <div id="status-alert" class="hidden p-4 rounded-xl text-xs border"></div>
+    </div>
+
+    <!-- AI Chat with Manuals (RAG Engine Search Widget) -->
+    <div id="ai-chat-manuals-section" class="bg-gradient-to-r from-indigo-950/60 via-slate-900/90 to-purple-950/60 border border-indigo-800/60 rounded-2xl p-6 space-y-4 shadow-xl relative">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🤖</span>
+          <h3 class="text-sm sm:text-base font-bold text-white">ถาม-ตอบอัจฉริยะกับคู่มือ (AI Chat Assistant & RAG Search)</h3>
+          <span class="ui-tag px-2 py-0.5 rounded bg-indigo-900 text-indigo-300 border border-indigo-700 font-mono text-[9px] cursor-pointer hover:bg-indigo-800" onclick="copyUiTag('[Widget: AIChatManuals - RAG Assistant]')">🏷️ [Widget: AIChatManuals]</span>
+        </div>
+        <span class="text-[11px] text-indigo-300 font-mono hidden sm:inline">⚡ ค้นหาและตอบจากเนื้อหาคู่มือทั้งหมดในคลัง</span>
+      </div>
+
+      <div class="flex gap-2">
+        <input id="chat-question-input" type="text" placeholder="💡 พิมพ์คำถาม เช่น: วิธีเชื่อมต่อ TikTok ทำอย่างไร? หรือ โปรแกรมนี้ใช้ทำอะไรได้บ้าง..." 
+          onkeydown="if(event.key==='Enter') askAiManualQuestion()"
+          class="flex-1 bg-slate-950 border border-indigo-800/80 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 shadow-inner" />
+        <button onclick="askAiManualQuestion()" id="chat-ask-btn" class="px-5 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-lg shadow-indigo-500/25 shrink-0">
+          <span>🚀</span> <span>ถาม AI</span>
+        </button>
+      </div>
+
+      <!-- Quick Suggested Questions (Pills) -->
+      <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+        <span class="text-slate-500 font-medium">คำถามตัวอย่าง:</span>
+        <button onclick="fillChatQuestion('วิธีดาวน์โหลดและติดตั้งโปรแกรม KruBank ทำอย่างไร')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 transition">📥 วิธีดาวน์โหลดและติดตั้ง</button>
+        <button onclick="fillChatQuestion('สอนขั้นตอนการเชื่อมต่อบัญชี TikTok หน่อย')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 transition">🔗 วิธีเชื่อมต่อ TikTok</button>
+        <button onclick="fillChatQuestion('โปรแกรมนี้มีฟีเจอร์อะไรเด่นๆ บ้าง สรุปสั้นๆ')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 transition">🌟 ฟีเจอร์เด่นทั้งหมด</button>
+      </div>
+
+      <!-- AI Chat Response Display Box -->
+      <div id="chat-response-box" class="hidden bg-slate-950/90 border border-indigo-700/60 rounded-xl p-4 space-y-3 transition">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <span class="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+            <span>✨</span> คำตอบจาก AI Manual Assistant:
+          </span>
+          <button onclick="document.getElementById('chat-response-box').classList.add('hidden')" class="text-slate-400 hover:text-slate-200 text-xs">&times; ปิด</button>
+        </div>
+        <div id="chat-answer-text" class="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap"></div>
+        <div id="chat-references-container" class="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2"></div>
+      </div>
     </div>
 
     <!-- Manuals Library Section: Categorized Course Bookshelf -->
