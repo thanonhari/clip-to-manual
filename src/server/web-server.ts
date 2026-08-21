@@ -130,7 +130,7 @@ export function createServer(): http.Server {
         JSON.stringify({
           status: 'ok',
           service: 'clip-to-manual',
-          version: '1.0.0',
+          version: '1.2.0',
           system: {
             nodeVersion: process.version,
             platform: process.platform,
@@ -140,7 +140,7 @@ export function createServer(): http.Server {
           engine: {
             ytDlpAvailable: ytdlp,
             hardware: hardwareDesc,
-            activeModel: 'Gemini 2.5 Flash / Pro'
+            activeModel: 'Gemini 2.5 / 3.5 Flash'
           },
           apiKeyStatus: {
             configured: isKeyValid,
@@ -190,6 +190,15 @@ export function createServer(): http.Server {
               ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
               : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80';
 
+            // Extract Overview summary
+            const overviewMatch = content.match(/## 🎯 ภาพรวมและจุดประสงค์การใช้งาน\s*\n+([\s\S]+?)(?=\n##|$)/) ||
+                                  content.match(/## Overview\s*\n+([\s\S]+?)(?=\n##|$)/);
+            const overview = overviewMatch?.[1]?.trim() || '';
+
+            // Count Steps
+            const stepMatches = content.match(/### Step \d+/g);
+            const stepsCount = stepMatches ? stepMatches.length : 0;
+
             // Determine if Master Manual or Single Episode
             const isMaster = fileName.toLowerCase().includes('master');
             const epMatch = fileName.match(/EP(\d+)/i) ?? firstLine.match(/EP\.?(\d+)/i);
@@ -203,6 +212,8 @@ export function createServer(): http.Server {
               topic = 'TypeScript & Oxlint';
             } else if (fileName.includes('Pinterest') || content.includes('Pinterest')) {
               topic = 'Pinterest Media Studio';
+            } else if (fileName.includes('python') || content.includes('Python')) {
+              topic = 'Python & Programming';
             }
 
             let title = firstLine;
@@ -230,6 +241,8 @@ export function createServer(): http.Server {
               isMaster,
               thumbnailUrl,
               videoId,
+              overview,
+              stepsCount,
               sizeBytes: fileStat.size,
               createdAt: fileStat.birthtime.toISOString().replace('T', ' ').substring(0, 19)
             };
@@ -457,7 +470,7 @@ function renderHtmlApp(ssr?: SsrState): string {
     : 'โหมดในตัว (กด ⚙️ ใส่คีย์ AI ได้)';
 
   return `<!DOCTYPE html>
-<html lang="th" class="h-full bg-slate-950 text-slate-100">
+<html lang="th" class="h-full bg-slate-950 text-slate-100 scroll-smooth">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -478,7 +491,7 @@ function renderHtmlApp(ssr?: SsrState): string {
     .ui-tag:hover { transform: translateY(-1px); }
   </style>
 </head>
-<body class="min-h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+<body class="min-h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white relative">
 
   <!-- Header: Application Navbar / AppHeader -->
   <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl sticky top-0 z-50">
@@ -490,7 +503,7 @@ function renderHtmlApp(ssr?: SsrState): string {
         <div>
           <div class="flex items-center gap-2">
             <span class="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">ClipToManual</span>
-            <span class="text-xs px-2.5 py-0.5 bg-indigo-950/90 text-indigo-300 border border-indigo-700/60 rounded-full font-semibold">v1.2.0</span>
+            <span class="text-xs px-2.5 py-0.5 bg-indigo-950/90 text-indigo-300 border border-indigo-700/60 rounded-full font-semibold">v1.3.0</span>
             <span class="ui-tag px-2 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-700 font-mono text-[9px] cursor-pointer hover:bg-indigo-900 shadow" onclick="copyUiTag('[Header: AppNavbar]')">🏷️ #Header</span>
           </div>
         </div>
@@ -777,7 +790,7 @@ function renderHtmlApp(ssr?: SsrState): string {
             </h2>
             <span class="ui-tag px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700 font-mono text-[9px] cursor-pointer hover:bg-blue-900" onclick="copyUiTag('[Section: CatalogGrid - Categorized Course Bookshelf]')">🏷️ [Section: CatalogGrid]</span>
           </div>
-          <p class="text-xs text-slate-400 mt-1">คู่มือที่จัดเก็บไว้ในเครื่อง สามารถค้นหา เปิดอ่าน หรือดาวน์โหลดได้ทันที</p>
+          <p class="text-xs text-slate-400 mt-1">คลิกที่การ์ดเพื่อเปิด <strong>ดูรายละเอียดฉบับย่อ & สารบัญ</strong> หรือเปิดอ่านฉบับเต็มได้ทันที</p>
         </div>
         <div class="flex items-center gap-2 w-full sm:w-auto">
           <input id="manual-search-input" oninput="filterManualsGrid()" type="text" placeholder="🔍 ค้นหาคู่มือ / ชื่อคอร์ส..." 
@@ -834,6 +847,85 @@ function renderHtmlApp(ssr?: SsrState): string {
     </div>
 
   </main>
+
+  <!-- Interactive Course Details Modal (Professional Metadata & TOC Drawer) -->
+  <div id="manual-details-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 sm:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto relative">
+      
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span id="modal-episode-badge" class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-indigo-950 text-indigo-300 border border-indigo-800"></span>
+            <span id="modal-topic-badge" class="px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700"></span>
+            <span id="modal-created-badge" class="text-xs text-slate-500 font-mono"></span>
+          </div>
+          <h2 id="modal-manual-title" class="text-xl font-bold text-white tracking-tight leading-snug"></h2>
+        </div>
+        <button onclick="closeManualDetailsModal()" class="text-slate-400 hover:text-slate-200 text-2xl font-bold p-1">&times;</button>
+      </div>
+
+      <!-- Modal Body: 2-Column Overview & Specs -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Left Column: Video Thumbnail Preview -->
+        <div class="space-y-3">
+          <div class="relative aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-800 shadow-md">
+            <img id="modal-thumbnail" src="" alt="Cover" class="w-full h-full object-cover">
+          </div>
+          <div id="modal-yt-btn-container"></div>
+        </div>
+
+        <!-- Right Column: Executive Overview & Metrics -->
+        <div class="md:col-span-2 space-y-4">
+          <div>
+            <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <span>🎯</span> ภาพรวมและจุดประสงค์การใช้งาน
+            </h4>
+            <p id="modal-overview-text" class="text-xs text-slate-300 leading-relaxed bg-slate-950/60 border border-slate-800/80 p-3.5 rounded-xl"></p>
+          </div>
+
+          <!-- Quick Metrics Bar -->
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-slate-950/60 border border-slate-800 p-3 rounded-xl text-center">
+              <div class="text-[10px] text-slate-500 uppercase font-semibold">ขั้นตอน (Steps)</div>
+              <div id="modal-steps-count" class="text-base font-bold text-indigo-300 mt-0.5">0</div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800 p-3 rounded-xl text-center">
+              <div class="text-[10px] text-slate-500 uppercase font-semibold">เวลาอ่านโดยประมาณ</div>
+              <div id="modal-read-time" class="text-base font-bold text-emerald-300 mt-0.5">~3 นาที</div>
+            </div>
+            <div class="bg-slate-950/60 border border-slate-800 p-3 rounded-xl text-center">
+              <div class="text-[10px] text-slate-500 uppercase font-semibold">ขนาดไฟล์</div>
+              <div id="modal-file-size" class="text-base font-bold text-purple-300 mt-0.5">0 KB</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Table of Contents / Step Preview -->
+      <div>
+        <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <span>📑</span> สารบัญขั้นตอนการทำงาน (Table of Contents)
+        </h4>
+        <div id="modal-toc-container" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
+      </div>
+
+      <!-- Modal Footer Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-800">
+        <div class="text-xs text-slate-500 font-mono" id="modal-file-path"></div>
+        <div class="flex items-center gap-2">
+          <button onclick="closeManualDetailsModal()" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+            ปิด
+          </button>
+          <button id="modal-open-full-btn" class="px-5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white transition flex items-center gap-1.5 shadow-lg shadow-indigo-500/25">
+            <span>📖</span> <span>เปิดอ่านคู่มือฉบับเต็ม</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <!-- Settings Modal: Dialog / Modal Window -->
   <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
@@ -940,8 +1032,8 @@ function renderHtmlApp(ssr?: SsrState): string {
             </tr>
             <tr class="hover:bg-slate-800/40">
               <td class="p-3 font-mono text-indigo-300 font-bold">Modal Dialog</td>
-              <td class="p-3">หน้าต่างป๊อปอัปที่เด้งซ้อนขึ้นมาเพื่อตั้งค่า</td>
-              <td class="p-3 text-slate-400">หน้าต่างตั้งค่า / API Key</td>
+              <td class="p-3">หน้าต่างป๊อปอัปที่เด้งซ้อนขึ้นมาเพื่อตั้งค่าหรือดูรายละเอียด</td>
+              <td class="p-3 text-slate-400">หน้าต่างตั้งค่า & รายละเอียดคู่มือ</td>
             </tr>
           </tbody>
         </table>
@@ -953,8 +1045,21 @@ function renderHtmlApp(ssr?: SsrState): string {
     </div>
   </div>
 
+  <!-- Floating Quick Scroll Navigator Widget (⬆️ Top / ⬇️ Bottom) -->
+  <div id="floating-scroll-nav" class="fixed bottom-6 right-6 z-40 flex flex-col gap-2 shadow-2xl">
+    <button onclick="scrollToTop()" class="h-10 w-10 rounded-xl bg-slate-900/90 hover:bg-indigo-600 border border-slate-700/80 hover:border-indigo-500 text-slate-300 hover:text-white flex items-center justify-center transition shadow-lg backdrop-blur-md group" title="ขึ้นบนสุด (Scroll to Top)">
+      <span class="text-sm group-hover:-translate-y-0.5 transition">▲</span>
+    </button>
+    <button onclick="openManualsLibrary()" class="h-10 w-10 rounded-xl bg-slate-900/90 hover:bg-indigo-600 border border-slate-700/80 hover:border-indigo-500 text-slate-300 hover:text-white flex items-center justify-center transition shadow-lg backdrop-blur-md group" title="ไปที่คลังคู่มือ (Catalog Bookshelf)">
+      <span class="text-xs group-hover:scale-110 transition">📚</span>
+    </button>
+    <button onclick="scrollToBottom()" class="h-10 w-10 rounded-xl bg-slate-900/90 hover:bg-indigo-600 border border-slate-700/80 hover:border-indigo-500 text-slate-300 hover:text-white flex items-center justify-center transition shadow-lg backdrop-blur-md group" title="ลงล่างสุด (Scroll to Bottom)">
+      <span class="text-sm group-hover:translate-y-0.5 transition">▼</span>
+    </button>
+  </div>
+
   <!-- Toast Notification Container -->
-  <div id="ui-toast" class="fixed bottom-6 right-6 bg-indigo-950 border border-indigo-500 text-indigo-200 px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl z-50 hidden flex items-center gap-2">
+  <div id="ui-toast" class="fixed bottom-6 left-6 bg-indigo-950 border border-indigo-500 text-indigo-200 px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl z-50 hidden flex items-center gap-2">
     <span>📋</span>
     <span id="ui-toast-msg">คัดลอกชื่อชิ้นส่วนแล้ว!</span>
   </div>

@@ -295,9 +295,13 @@ function filterManualsGrid() {
 
   container.innerHTML = filtered.map(m => {
     const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
-    return '<div class="bg-slate-950/90 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition flex flex-col group">' +
+    const encFile = encodeURIComponent(m.fileName);
+    return '<div class="bg-slate-950/90 border border-slate-800 hover:border-indigo-500/60 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition flex flex-col group cursor-pointer" onclick="openManualDetails(\'' + encFile + '\')">' +
       '<div class="relative aspect-video w-full overflow-hidden bg-slate-900">' +
         '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + escapeHtml(m.title) + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
+        '<div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition flex items-end p-3">' +
+          '<span class="text-[11px] font-bold text-white flex items-center gap-1">🔍 คลิกดูรายละเอียด & สารบัญ</span>' +
+        '</div>' +
         '<div class="absolute top-2 left-2 flex gap-1.5">' +
           '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border backdrop-blur-md ' + badgeColor + '">' + escapeHtml(m.episode) + '</span>' +
           '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-900/80 text-slate-300 border border-slate-700 backdrop-blur-md">' + escapeHtml(m.topic) + '</span>' +
@@ -306,17 +310,120 @@ function filterManualsGrid() {
       '<div class="p-4 flex-1 flex flex-col justify-between space-y-3">' +
         '<div>' +
           '<h3 class="text-xs font-bold text-slate-100 line-clamp-2 leading-snug group-hover:text-indigo-400 transition" title="' + escapeHtml(m.title) + '">' + escapeHtml(m.title) + '</h3>' +
-          '<div class="text-[11px] text-slate-500 mt-1.5 font-mono">' + m.createdAt + '</div>' +
+          '<div class="text-[11px] text-slate-500 mt-1.5 font-mono flex items-center justify-between">' +
+            '<span>' + m.createdAt.slice(0, 10) + '</span>' +
+            '<span class="text-slate-400 font-sans">' + (m.stepsCount ? m.stepsCount + ' ขั้นตอน' : 'ฉบับเต็ม') + '</span>' +
+          '</div>' +
         '</div>' +
-        '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">' +
-          '<button onclick="viewSavedManual(\'' + encodeURIComponent(m.fileName) + '\')" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow-md">' +
-            '<span>📖 เปิดอ่าน</span>' +
+        '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" onclick="event.stopPropagation()">' +
+          '<button onclick="openManualDetails(\'' + encFile + '\')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow">' +
+            '<span>🔍 ดูรายละเอียด</span>' +
+          '</button>' +
+          '<button onclick="viewSavedManual(\'' + encFile + '\')" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow-md">' +
+            '<span>📖 อ่านเลย</span>' +
           '</button>' +
           (m.videoId ? '<a href="https://www.youtube.com/watch?v=' + m.videoId + '" target="_blank" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition" title="ดูวิดีโอบน YouTube">🎥</a>' : '') +
         '</div>' +
       '</div>' +
     '</div>';
   }).join('');
+}
+
+async function openManualDetails(encodedFileName) {
+  const fileName = decodeURIComponent(encodedFileName);
+  const manual = allLoadedManuals.find(m => m.fileName === fileName);
+  if (!manual) return;
+
+  try {
+    const res = await fetch('/api/manuals/' + encodedFileName);
+    const mdText = await res.text();
+
+    const titleEl = document.getElementById('modal-manual-title');
+    const epBadge = document.getElementById('modal-episode-badge');
+    const topicBadge = document.getElementById('modal-topic-badge');
+    const createdBadge = document.getElementById('modal-created-badge');
+    const thumbEl = document.getElementById('modal-thumbnail');
+    const overviewEl = document.getElementById('modal-overview-text');
+    const stepsCountEl = document.getElementById('modal-steps-count');
+    const readTimeEl = document.getElementById('modal-read-time');
+    const fileSizeEl = document.getElementById('modal-file-size');
+    const filePathEl = document.getElementById('modal-file-path');
+    const ytContainer = document.getElementById('modal-yt-btn-container');
+    const tocContainer = document.getElementById('modal-toc-container');
+    const openFullBtn = document.getElementById('modal-open-full-btn');
+
+    if (titleEl) titleEl.textContent = manual.title;
+    if (epBadge) epBadge.textContent = manual.episode;
+    if (topicBadge) topicBadge.textContent = manual.topic;
+    if (createdBadge) createdBadge.textContent = '📅 บันทึกเมื่อ ' + manual.createdAt;
+    if (thumbEl) thumbEl.src = manual.thumbnailUrl;
+    
+    // Overview
+    const overview = manual.overview || 'คู่มือนี้ถูกสังเคราะห์และรวบรวมจากวิดีโอ เพื่อให้ผู้ใช้สามารถปฏิบัติตามขั้นตอนได้อย่างเป็นระบบ';
+    if (overviewEl) overviewEl.textContent = overview;
+
+    // Steps & TOC
+    const stepLines = mdText.split('\n').filter(l => l.startsWith('### Step') || l.startsWith('## ') || l.startsWith('### '));
+    const stepOnly = mdText.split('\n').filter(l => l.startsWith('### Step'));
+    if (stepsCountEl) stepsCountEl.textContent = stepOnly.length || (manual.stepsCount || 'หลาย');
+    if (readTimeEl) readTimeEl.textContent = '~' + Math.max(2, Math.round(mdText.length / 500)) + ' นาที';
+    if (fileSizeEl) fileSizeEl.textContent = (manual.sizeBytes ? (manual.sizeBytes / 1024).toFixed(1) : (mdText.length / 1024).toFixed(1)) + ' KB';
+    if (filePathEl) filePathEl.textContent = '📂 /manuals/' + manual.fileName;
+
+    // YouTube Button
+    if (ytContainer) {
+      if (manual.videoId) {
+        ytContainer.innerHTML = '<a href="https://www.youtube.com/watch?v=' + manual.videoId + '" target="_blank" class="w-full py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow">' +
+          '<span>🎥</span> <span>ดูคลิปต้นฉบับบน YouTube</span>' +
+        '</a>';
+      } else {
+        ytContainer.innerHTML = '';
+      }
+    }
+
+    // TOC
+    if (tocContainer) {
+      if (stepLines.length > 0) {
+        tocContainer.innerHTML = stepLines.slice(0, 15).map(s => {
+          const clean = escapeHtml(s.replace(/^#+\s*/, '').replace(/^[🌟🧩🚀⌨️⚠️❓🎯]\s*/, ''));
+          const isMain = s.startsWith('## ');
+          return '<div class="flex items-center justify-between p-2 rounded-lg ' + (isMain ? 'bg-slate-950/80 text-indigo-300 font-bold' : 'bg-slate-950/40 text-slate-300') + ' text-xs border border-slate-800/60">' +
+            '<span>' + clean + '</span>' +
+            '<span class="text-[10px] text-slate-500 font-mono">Step</span>' +
+          '</div>';
+        }).join('');
+      } else {
+        tocContainer.innerHTML = '<div class="text-xs text-slate-500 italic p-2">ไม่มีสารบัญย่อย</div>';
+      }
+    }
+
+    // Open Full Button Action
+    if (openFullBtn) {
+      openFullBtn.onclick = () => {
+        closeManualDetailsModal();
+        viewSavedManual(encodedFileName);
+      };
+    }
+
+    const modal = document.getElementById('manual-details-modal');
+    if (modal) modal.classList.remove('hidden');
+    logEvent('info', 'เปิดดูรายละเอียด: ' + manual.title);
+  } catch (err) {
+    showErrorDiagnostic('โหลดรายละเอียดคู่มือไม่สำเร็จ', err.message, err);
+  }
+}
+
+function closeManualDetailsModal() {
+  const modal = document.getElementById('manual-details-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function scrollToBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 }
 
 function openManualsLibrary() {
@@ -888,10 +995,12 @@ Object.assign(window, {
   generateManualAction,
   copyMarkdown,
   downloadMarkdown,
-  showAlert,
-  hideAlert,
   toggleUiTags,
   copyUiTag,
   toggleUiGlossaryModal,
-  showToast
+  showToast,
+  openManualDetails,
+  closeManualDetailsModal,
+  scrollToTop,
+  scrollToBottom
 });
