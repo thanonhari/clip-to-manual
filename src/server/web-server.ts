@@ -6,6 +6,7 @@ import { parseYouTubeUrl } from '../extractors/youtube-url.js';
 import { extractYouTubeTranscript, parseVttOrSrt } from '../extractors/transcript-extractor.js';
 import { extractWithYtDlp, isYtDlpAvailable } from '../extractors/yt-dlp-extractor.js';
 import { generateManual } from '../generators/ai-manual-generator.js';
+import { sendTelegramNotification } from '../services/telegram-notifier.js';
 import type { ManualGenerationRequest, SoftwareManual } from '../types/manual.js';
 
 interface RequestStat {
@@ -334,11 +335,39 @@ export function createServer(): http.Server {
           } catch (saveErr) {
             console.warn('Failed to auto-save manual to disk:', saveErr);
           }
+
+          // Send Telegram notification
+          sendTelegramNotification({
+            event: 'SUCCESS',
+            title: 'สร้างคู่มือการใช้งานเสร็จสมบูรณ์',
+            details: {
+              'ชื่อโปรแกรม': result.manual.programName,
+              'หัวข้อ': result.manual.title,
+              'กลุ่มเป้าหมาย': result.manual.targetAudience,
+              'วิดีโอ': body.youtubeUrl || 'N/A'
+            },
+            message: `สร้างคู่มือสำเร็จและจัดเก็บลงคลังเรียบร้อยแล้ว (${result.manual.stepByStepGuide?.length ?? 0} ตอน/ขั้นตอน)`
+          }).catch(() => {});
+        } else if (!result.success) {
+          sendTelegramNotification({
+            event: 'ERROR',
+            title: 'สร้างคู่มือไม่สำเร็จ',
+            details: {
+              'ข้อผิดพลาด': result.error || 'Unknown Error',
+              'วิดีโอ': body.youtubeUrl || 'N/A'
+            }
+          }).catch(() => {});
         }
 
         res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err) {
+        sendTelegramNotification({
+          event: 'ERROR',
+          title: 'เซิร์ฟเวอร์เกิดข้อผิดพลาดในการประมวลผล',
+          message: String(err)
+        }).catch(() => {});
+
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           success: false, 
@@ -346,6 +375,22 @@ export function createServer(): http.Server {
           stack: err instanceof Error ? err.stack : undefined
         }));
       }
+      return;
+    }
+
+    // API: Test Telegram Notification
+    if (req.method === 'POST' && pathname === '/api/telegram/test') {
+      const ok = await sendTelegramNotification({
+        event: 'TEST_REPORT',
+        title: 'ทดสอบส่งข้อความจากหน้าเว็บ',
+        details: {
+          'สถานะ': 'เชื่อมต่อ Telegram สำเร็จ',
+          'อุปกรณ์': detectSystemHardware()
+        },
+        message: 'ระบบ Telegram Remote Notification พร้อมทำงานแล้วครับ'
+      });
+      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: ok }));
       return;
     }
 
@@ -727,7 +772,7 @@ function renderHtmlApp(ssr?: SsrState): string {
         <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-200 text-lg">&times;</button>
       </div>
 
-      <div class="space-y-3">
+      <div class="space-y-4">
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Google Gemini API Key (ฟรีจาก AI Studio)</label>
           <input type="password" id="gemini-key-input" placeholder="AIzaSy..." 
@@ -735,6 +780,14 @@ function renderHtmlApp(ssr?: SsrState): string {
           <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
             🛡️ <strong>ความปลอดภัย:</strong> บันทึกลงเครื่องท่านเท่านั้น หากไม่ใส่คีย์ ระบบจะใช้โหมด Local Deterministic Engine ในการสกัดฟังก์ชันให้ฟรีโดยอัตโนมัติ
           </p>
+        </div>
+
+        <div class="pt-2 border-t border-slate-800 space-y-2">
+          <label class="block text-xs font-semibold text-slate-300">📱 Telegram Remote Notification & Alerts</label>
+          <p class="text-[11px] text-slate-400">ระบบจะส่งการแจ้งเตือนเมื่อสร้างคู่มือเสร็จ หรือเกิดข้อผิดพลาดไปยัง Telegram อัตโนมัติ</p>
+          <button onclick="testTelegramNotification()" id="tg-test-btn" type="button" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-indigo-300 rounded-xl transition flex items-center justify-center gap-1.5 shadow">
+            <span>✈️</span> <span>ส่งข้อความทดสอบไปยัง Telegram</span>
+          </button>
         </div>
       </div>
 
@@ -1150,6 +1203,26 @@ function renderHtmlApp(ssr?: SsrState): string {
       toggleSettingsModal();
       fetchDashboardStats();
       showAlert('บันทึกการตั้งค่า API Key เรียบร้อยแล้ว', 'success');
+    }
+
+    async function testTelegramNotification() {
+      const btn = document.getElementById('tg-test-btn');
+      if (btn) btn.innerHTML = '<span>⏳</span> <span>กำลังส่งข้อความ...</span>';
+      try {
+        const res = await fetch('/api/telegram/test', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showAlert('ส่งข้อความทดสอบไปยัง Telegram เรียบร้อยแล้ว! ✈️', 'success');
+          logEvent('success', 'ส่ง Telegram Test Message สำเร็จ');
+        } else {
+          showAlert('ส่งข้อความ Telegram ไม่สำเร็จ กรุณาตรวจ Token & Chat ID', 'error');
+          logEvent('error', 'ส่ง Telegram Test Message ไม่สำเร็จ');
+        }
+      } catch (err) {
+        showAlert('เกิดข้อผิดพลาดในการเชื่อมต่อ Telegram: ' + err.message, 'error');
+      } finally {
+        if (btn) btn.innerHTML = '<span>✈️</span> <span>ส่งข้อความทดสอบไปยัง Telegram</span>';
+      }
     }
 
     function switchInputTab(tab) {
