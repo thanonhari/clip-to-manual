@@ -270,6 +270,22 @@ function renderCategoryTabs() {
   tabsContainer.innerHTML = html;
 }
 
+let currentViewMode = 'list';
+
+function setViewMode(mode) {
+  currentViewMode = mode;
+  const listBtn = document.getElementById('view-mode-list-btn');
+  const gridBtn = document.getElementById('view-mode-grid-btn');
+  if (mode === 'list') {
+    if (listBtn) listBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition flex items-center gap-1.5 shadow';
+    if (gridBtn) gridBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5';
+  } else {
+    if (gridBtn) gridBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition flex items-center gap-1.5 shadow';
+    if (listBtn) listBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5';
+  }
+  filterManualsGrid();
+}
+
 function selectCategory(cat) {
   selectedCategory = cat;
   renderCategoryTabs();
@@ -289,44 +305,112 @@ function filterManualsGrid() {
   });
 
   if (filtered.length === 0) {
-    container.innerHTML = '<div class="col-span-full text-center py-12 text-xs text-slate-500 bg-slate-950/40 rounded-2xl border border-slate-800/80">ไม่พบคู่มือในหมวดหมู่นี้ คุณสามารถวางลิงก์ YouTube ด้านบนเพื่อสร้างคู่มือใหม่ได้ครับ</div>';
+    container.className = 'w-full';
+    container.innerHTML = '<div class="text-center py-12 text-xs text-slate-500 bg-slate-950/40 rounded-2xl border border-slate-800/80">ไม่พบคู่มือในหมวดหมู่นี้ คุณสามารถวางลิงก์ YouTube ด้านบนเพื่อสร้างคู่มือใหม่ได้ครับ</div>';
     return;
   }
 
-  container.innerHTML = filtered.map(m => {
-    const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
-    const encFile = encodeURIComponent(m.fileName);
-    return '<div class="bg-slate-950/90 border border-slate-800 hover:border-indigo-500/60 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition flex flex-col group cursor-pointer" onclick="openManualDetails(\'' + encFile + '\')">' +
-      '<div class="relative aspect-video w-full overflow-hidden bg-slate-900">' +
-        '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + escapeHtml(m.title) + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
-        '<div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition flex items-end p-3">' +
-          '<span class="text-[11px] font-bold text-white flex items-center gap-1">🔍 คลิกดูรายละเอียด & สารบัญ</span>' +
-        '</div>' +
-        '<div class="absolute top-2 left-2 flex gap-1.5">' +
-          '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border backdrop-blur-md ' + badgeColor + '">' + escapeHtml(m.episode) + '</span>' +
-          '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-900/80 text-slate-300 border border-slate-700 backdrop-blur-md">' + escapeHtml(m.topic) + '</span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="p-4 flex-1 flex flex-col justify-between space-y-3">' +
-        '<div>' +
-          '<h3 class="text-xs font-bold text-slate-100 line-clamp-2 leading-snug group-hover:text-indigo-400 transition" title="' + escapeHtml(m.title) + '">' + escapeHtml(m.title) + '</h3>' +
-          '<div class="text-[11px] text-slate-500 mt-1.5 font-mono flex items-center justify-between">' +
-            '<span>' + m.createdAt.slice(0, 10) + '</span>' +
-            '<span class="text-slate-400 font-sans">' + (m.stepsCount ? m.stepsCount + ' ขั้นตอน' : 'ฉบับเต็ม') + '</span>' +
+  if (currentViewMode === 'list') {
+    container.className = 'space-y-2.5';
+    container.innerHTML = filtered.map(m => {
+      const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
+      const encFile = encodeURIComponent(m.fileName);
+      const cleanTitleEsc = escapeHtml(m.title).replace(/'/g, '&#039;');
+      return '<div class="bg-slate-950/90 border border-slate-800/90 hover:border-indigo-500/60 rounded-2xl p-3 sm:p-3.5 shadow-lg hover:shadow-xl transition flex flex-col md:flex-row md:items-center justify-between gap-3 group cursor-pointer" onclick="openManualDetails(\'' + encFile + '\')">' +
+        '<div class="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">' +
+          '<div class="relative w-24 sm:w-28 aspect-video rounded-xl overflow-hidden bg-slate-900 shrink-0 border border-slate-800">' +
+            '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + cleanTitleEsc + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
+            '<span class="absolute bottom-1 right-1 px-1.5 py-0.2 rounded bg-slate-950/80 text-white text-[9px] font-bold font-mono">' + (m.stepsCount ? m.stepsCount + ' Steps' : 'Guide') + '</span>' +
+          '</div>' +
+          '<div class="flex flex-col justify-center min-w-0 flex-1 space-y-1">' +
+            '<div class="flex items-center gap-2">' +
+              '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ' + badgeColor + '">' + escapeHtml(m.episode) + '</span>' +
+              '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-900 text-slate-300 border border-slate-700 shrink-0 truncate max-w-[150px]">' + escapeHtml(m.topic) + '</span>' +
+              '<span class="text-[11px] text-slate-500 font-mono hidden sm:inline shrink-0">📅 ' + m.createdAt.slice(0, 10) + '</span>' +
+            '</div>' +
+            '<h3 class="text-xs sm:text-sm font-bold text-slate-100 truncate group-hover:text-indigo-400 transition" title="' + cleanTitleEsc + '">' + cleanTitleEsc + '</h3>' +
           '</div>' +
         '</div>' +
-        '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" onclick="event.stopPropagation()">' +
-          '<button onclick="openManualDetails(\'' + encFile + '\')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow">' +
-            '<span>🔍 ดูรายละเอียด</span>' +
+        '<div class="flex items-center justify-between md:justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800/80" onclick="event.stopPropagation()">' +
+          '<button onclick="openManualDetails(\'' + encFile + '\')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center gap-1 shadow">' +
+            '<span>🔍</span> <span class="hidden sm:inline">รายละเอียด</span>' +
           '</button>' +
-          '<button onclick="viewSavedManual(\'' + encFile + '\')" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow-md">' +
-            '<span>📖 อ่านเลย</span>' +
+          '<button onclick="viewSavedManual(\'' + encFile + '\')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition flex items-center gap-1 shadow-md">' +
+            '<span>📖</span> <span>เปิดอ่าน</span>' +
           '</button>' +
-          (m.videoId ? '<a href="https://www.youtube.com/watch?v=' + m.videoId + '" target="_blank" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition" title="ดูวิดีโอบน YouTube">🎥</a>' : '') +
+          '<button onclick="deleteManual(\'' + encFile + '\', \'' + cleanTitleEsc + '\')" class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-900/80 text-rose-300 rounded-lg text-xs transition shadow" title="ลบคู่มือนี้">' +
+            '<span>🗑️</span>' +
+          '</button>' +
+          (m.videoId ? '<a href="https://www.youtube.com/watch?v=' + m.videoId + '" target="_blank" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition" title="ดูคลิปบน YouTube">🎥</a>' : '') +
         '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+      '</div>';
+    }).join('');
+  } else {
+    container.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
+    container.innerHTML = filtered.map(m => {
+      const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
+      const encFile = encodeURIComponent(m.fileName);
+      const cleanTitleEsc = escapeHtml(m.title).replace(/'/g, '&#039;');
+      return '<div class="bg-slate-950/90 border border-slate-800 hover:border-indigo-500/60 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition flex flex-col group cursor-pointer" onclick="openManualDetails(\'' + encFile + '\')">' +
+        '<div class="relative aspect-video w-full overflow-hidden bg-slate-900">' +
+          '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + cleanTitleEsc + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
+          '<div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition flex items-end p-3">' +
+            '<span class="text-[11px] font-bold text-white flex items-center gap-1">🔍 คลิกดูรายละเอียด & สารบัญ</span>' +
+          '</div>' +
+          '<div class="absolute top-2 left-2 flex gap-1.5">' +
+            '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border backdrop-blur-md ' + badgeColor + '">' + escapeHtml(m.episode) + '</span>' +
+            '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-900/80 text-slate-300 border border-slate-700 backdrop-blur-md">' + escapeHtml(m.topic) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="p-4 flex-1 flex flex-col justify-between space-y-3">' +
+          '<div>' +
+            '<h3 class="text-xs font-bold text-slate-100 line-clamp-2 leading-snug group-hover:text-indigo-400 transition" title="' + cleanTitleEsc + '">' + cleanTitleEsc + '</h3>' +
+            '<div class="text-[11px] text-slate-500 mt-1.5 font-mono flex items-center justify-between">' +
+              '<span>' + m.createdAt.slice(0, 10) + '</span>' +
+              '<span class="text-slate-400 font-sans">' + (m.stepsCount ? m.stepsCount + ' ขั้นตอน' : 'ฉบับเต็ม') + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" onclick="event.stopPropagation()">' +
+            '<button onclick="openManualDetails(\'' + encFile + '\')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow">' +
+              '<span>🔍 รายละเอียด</span>' +
+            '</button>' +
+            '<button onclick="viewSavedManual(\'' + encFile + '\')" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition flex items-center justify-center gap-1 shadow-md">' +
+              '<span>📖 อ่าน</span>' +
+            '</button>' +
+            '<button onclick="deleteManual(\'' + encFile + '\', \'' + cleanTitleEsc + '\')" class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-900/80 text-rose-300 rounded-lg text-xs transition" title="ลบคู่มือนี้">' +
+              '<span>🗑️</span>' +
+            '</button>' +
+            (m.videoId ? '<a href="https://www.youtube.com/watch?v=' + m.videoId + '" target="_blank" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition" title="ดูคลิปบน YouTube">🎥</a>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+}
+
+async function deleteManual(encodedFileName, title) {
+  const cleanTitle = title || 'คู่มือฉบับนี้';
+  if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบคู่มือ "' + cleanTitle + '" ออกจากเครื่อง?')) {
+    return;
+  }
+
+  try {
+    logEvent('info', 'กำลังลบคู่มือ: ' + cleanTitle);
+    const res = await fetch('/api/manuals/' + encodedFileName, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      closeManualDetailsModal();
+      closeManualView();
+      await fetchDashboardStats();
+      await loadManualsLibrary();
+      showToast('🗑️ ลบคู่มือ "' + cleanTitle + '" เรียบร้อยแล้ว');
+      logEvent('success', 'ลบคู่มือสำเร็จ: ' + cleanTitle);
+    } else {
+      showErrorDiagnostic('ลบคู่มือไม่สำเร็จ', data.error, data);
+    }
+  } catch (err) {
+    showErrorDiagnostic('ข้อผิดพลาดในการลบคู่มือ', err.message, err);
+  }
 }
 
 async function openManualDetails(encodedFileName) {
@@ -351,6 +435,7 @@ async function openManualDetails(encodedFileName) {
     const ytContainer = document.getElementById('modal-yt-btn-container');
     const tocContainer = document.getElementById('modal-toc-container');
     const openFullBtn = document.getElementById('modal-open-full-btn');
+    const deleteBtn = document.getElementById('modal-delete-btn');
 
     if (titleEl) titleEl.textContent = manual.title;
     if (epBadge) epBadge.textContent = manual.episode;
@@ -402,6 +487,13 @@ async function openManualDetails(encodedFileName) {
       openFullBtn.onclick = () => {
         closeManualDetailsModal();
         viewSavedManual(encodedFileName);
+      };
+    }
+
+    // Delete Button Action in Modal
+    if (deleteBtn) {
+      deleteBtn.onclick = () => {
+        deleteManual(encodedFileName, manual.title);
       };
     }
 
@@ -1002,5 +1094,7 @@ Object.assign(window, {
   openManualDetails,
   closeManualDetailsModal,
   scrollToTop,
-  scrollToBottom
+  scrollToBottom,
+  setViewMode,
+  deleteManual
 });

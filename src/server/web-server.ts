@@ -277,6 +277,23 @@ export function createServer(): http.Server {
       return;
     }
 
+    // API: Delete Single Manual
+    if (req.method === 'DELETE' && pathname.startsWith('/api/manuals/')) {
+      try {
+        const rawFileName = decodeURIComponent(pathname.replace('/api/manuals/', ''));
+        const safeFileName = path.basename(rawFileName);
+        const filePath = path.join(manualsDir, safeFileName);
+        await fs.unlink(filePath);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Deleted successfully' }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: `Failed to delete: ${String(err)}` }));
+      }
+      return;
+    }
+
     // API: Extract transcript from YouTube URL
     if (req.method === 'POST' && pathname === '/api/extract') {
       try {
@@ -786,15 +803,24 @@ function renderHtmlApp(ssr?: SsrState): string {
         <div>
           <div class="flex items-center gap-2">
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
-              <span>📚</span> คลังคู่มือแยกตามหมวดหมู่ & รูปปกตัวอย่าง
+              <span>📚</span> คลังคู่มือแยกตามหมวดหมู่ & รายการคลิป
             </h2>
             <span class="ui-tag px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700 font-mono text-[9px] cursor-pointer hover:bg-blue-900" onclick="copyUiTag('[Section: CatalogGrid - Categorized Course Bookshelf]')">🏷️ [Section: CatalogGrid]</span>
           </div>
-          <p class="text-xs text-slate-400 mt-1">คลิกที่การ์ดเพื่อเปิด <strong>ดูรายละเอียดฉบับย่อ & สารบัญ</strong> หรือเปิดอ่านฉบับเต็มได้ทันที</p>
+          <p class="text-xs text-slate-400 mt-1">คลิกที่แถวหรือการ์ดเพื่อ <strong>ดูรายละเอียดฉบับย่อ & สารบัญ</strong> หรือเปิดอ่านฉบับเต็มได้ทันที</p>
         </div>
-        <div class="flex items-center gap-2 w-full sm:w-auto">
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <!-- View Mode Switcher: List vs Grid -->
+          <div class="flex rounded-xl bg-slate-950 border border-slate-800 p-0.5 shadow-inner">
+            <button id="view-mode-list-btn" onclick="setViewMode('list')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition flex items-center gap-1.5 shadow" title="แสดงแบบแถวบรรทัดละคลิป (ช่องตรงกันเป็นระเบียบ)">
+              <span>☰</span> <span>แถวเรียง</span>
+            </button>
+            <button id="view-mode-grid-btn" onclick="setViewMode('grid')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5" title="แสดงแบบการ์ดตาราง">
+              <span>🔲</span> <span>ตารางการ์ด</span>
+            </button>
+          </div>
           <input id="manual-search-input" oninput="filterManualsGrid()" type="text" placeholder="🔍 ค้นหาคู่มือ / ชื่อคอร์ส..." 
-            class="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 w-full sm:w-56" />
+            class="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 w-full sm:w-52" />
         </div>
       </div>
 
@@ -803,8 +829,8 @@ function renderHtmlApp(ssr?: SsrState): string {
         <!-- Rendered dynamically -->
       </div>
 
-      <!-- Cards Grid (Catalog Grid) -->
-      <div id="manuals-grid-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <!-- Cards & Rows Container (Catalog Grid / List) -->
+      <div id="manuals-grid-container" class="space-y-2.5">
         <!-- Rendered dynamically -->
       </div>
     </div>
@@ -911,9 +937,14 @@ function renderHtmlApp(ssr?: SsrState): string {
         <div id="modal-toc-container" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
       </div>
 
-      <!-- Modal Footer Toolbar -->
+      <!-- Modal Footer Toolbar with Delete Button -->
       <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-800">
-        <div class="text-xs text-slate-500 font-mono" id="modal-file-path"></div>
+        <div class="flex items-center gap-3">
+          <div class="text-xs text-slate-500 font-mono" id="modal-file-path"></div>
+          <button id="modal-delete-btn" class="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-lg transition flex items-center gap-1 shadow">
+            <span>🗑️</span> <span>ลบคู่มือนี้</span>
+          </button>
+        </div>
         <div class="flex items-center gap-2">
           <button onclick="closeManualDetailsModal()" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
             ปิด
