@@ -1,0 +1,45 @@
+services:
+  # ====================================================================
+  # ClipToManual Web App & API Service
+  # ====================================================================
+  clip-to-manual:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clip-to-manual
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      - PORT=3100
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./manuals:/app/manuals
+      - ./.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/api/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ====================================================================
+  # Optional: Tailscale VPN Sidecar Container
+  # (Enable if you want Tailscale running entirely inside Docker)
+  # ====================================================================
+  # tailscale:
+  #   image: tailscale/tailscale:latest
+  #   container_name: tailscale-clip-to-manual
+  #   hostname: home-manual-studio
+  #   restart: unless-stopped
+  #   environment:
+  #     - TS_AUTHKEY=${TS_AUTHKEY}
+  #     - TS_STATE_DIR=/var/lib/tailscale
+  #     - TS_USERSPACE=false
+  #   volumes:
+  #     - ./tailscale-state:/var/lib/tailscale
+  #     - /dev/net/tun:/dev/net/tun
+  #   cap_add:
+  #     - net_admin
+  #     - sys_module
+  #   network_mode: service:clip-to-manual
