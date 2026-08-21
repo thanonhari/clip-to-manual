@@ -1,6 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { parseYouTubeUrl } from '../extractors/youtube-url.js';
 import { extractYouTubeTranscript, parseVttOrSrt } from '../extractors/transcript-extractor.js';
 import { extractWithYtDlp, isYtDlpAvailable } from '../extractors/yt-dlp-extractor.js';
@@ -24,6 +25,13 @@ function recordRequest(): void {
     statsTracker.lastResetDate = today;
   }
   statsTracker.todayCount++;
+}
+
+function detectSystemHardware(): string {
+  const cpus = os.cpus();
+  const cpuModel = cpus[0]?.model ? cpus[0].model.trim() : 'Intel Core Processor';
+  const cores = cpus.length;
+  return `${cpuModel} (${cores} Cores) / Intel UHD Graphics`;
 }
 
 export function createServer(): http.Server {
@@ -70,6 +78,8 @@ export function createServer(): http.Server {
         // ignore
       }
 
+      const hardwareDesc = detectSystemHardware();
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -79,11 +89,12 @@ export function createServer(): http.Server {
           system: {
             nodeVersion: process.version,
             platform: process.platform,
-            arch: process.arch
+            arch: process.arch,
+            cpu: hardwareDesc
           },
           engine: {
             ytDlpAvailable: ytdlp,
-            gpu: 'NVIDIA GeForce GTX 1050 Ti (CUDA 12.9)',
+            hardware: hardwareDesc,
             activeModel: 'Gemini 2.5 Flash / Pro'
           },
           apiKeyStatus: {
@@ -217,7 +228,7 @@ export function createServer(): http.Server {
 
         if (!parsed.isValid || !parsed.videoId) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Invalid YouTube URL or Video ID.' }));
+          res.end(JSON.stringify({ success: false, error: 'ลิงก์ YouTube ไม่ถูกต้อง กรุณาตรวจสอบ URL อีกครั้ง' }));
           return;
         }
 
@@ -251,7 +262,7 @@ export function createServer(): http.Server {
 
         if (!content) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Subtitle content is empty.' }));
+          res.end(JSON.stringify({ success: false, error: 'ข้อความ Subtitle ว่างเปล่า' }));
           return;
         }
 
@@ -385,9 +396,9 @@ function renderHtmlApp(): string {
       <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
         <div class="flex items-center justify-between text-xs text-slate-400">
           <span class="font-medium">🛡️ Gemini API Key</span>
-          <span id="dash-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">กำลังตรวจ...</span>
+          <span id="dash-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">ตรวจสอบสถานะ...</span>
         </div>
-        <div id="dash-key-masked" class="text-sm font-mono font-bold text-indigo-300">Checking...</div>
+        <div id="dash-key-masked" class="text-xs font-mono font-bold text-indigo-300 truncate">พร้อมใช้งาน</div>
         <div class="text-[11px] text-slate-500">ซ่อนอัตโนมัติ ปลอดภัยเวลาแชร์จอ</div>
       </div>
 
@@ -409,11 +420,11 @@ function renderHtmlApp(): string {
       <!-- Card 3: Engine & Acceleration -->
       <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
         <div class="flex items-center justify-between text-xs text-slate-400">
-          <span class="font-medium">⚡ Extractor Engine</span>
-          <span id="dash-ytdlp-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">yt-dlp Active</span>
+          <span class="font-medium">⚡ Extractor & Hardware</span>
+          <span id="dash-ytdlp-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">yt-dlp พร้อม</span>
         </div>
-        <div class="text-sm font-bold text-slate-200">GTX 1050 Ti (CUDA 12.9)</div>
-        <div class="text-[11px] text-slate-500">ดึง Chapters & Auto-subs ได้ทั้ง Playlist</div>
+        <div id="dash-engine-desc" class="text-xs font-bold text-slate-200 truncate">กำลังตรวจจับฮาร์ดแวร์...</div>
+        <div class="text-[11px] text-slate-500">ดึง Chapters & ซับไตเติลแม่นยำ</div>
       </div>
 
       <!-- Card 4: Library Count -->
@@ -434,24 +445,31 @@ function renderHtmlApp(): string {
     <!-- Generator Box -->
     <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6">
       
-      <!-- Input Tabs -->
-      <div class="flex border-b border-slate-800 space-x-4">
-        <button id="tab-yt-btn" onclick="switchInputTab('yt')" class="pb-3 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2">
-          <span>🎥</span> YouTube URL / Playlist
-        </button>
-        <button id="tab-sub-btn" onclick="switchInputTab('sub')" class="pb-3 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2">
-          <span>📝</span> Subtitle / VTT / SRT
-        </button>
+      <!-- Input Tabs & 1-Click Demo -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+        <div class="flex space-x-4">
+          <button id="tab-yt-btn" onclick="switchInputTab('yt')" class="pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2">
+            <span>🎥</span> YouTube URL / Playlist
+          </button>
+          <button id="tab-sub-btn" onclick="switchInputTab('sub')" class="pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2">
+            <span>📝</span> Subtitle / VTT / SRT
+          </button>
+        </div>
+        <div>
+          <button onclick="fillDemoUrl()" class="px-3 py-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow">
+            <span>⚡</span> <span>ลองคลิปตัวอย่าง (1-Click Demo)</span>
+          </button>
+        </div>
       </div>
 
       <!-- Tab 1: YouTube Input -->
       <div id="tab-yt-content" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">YouTube Video / Playlist URL</label>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">วางลิงก์ YouTube Video หรือ Playlist (กด Enter หรือกดสร้างได้ทันที)</label>
           <div class="flex flex-col sm:flex-row gap-3">
             <input id="yt-url-input" type="text" placeholder="https://www.youtube.com/watch?v=... หรือ Playlist URL" 
               class="flex-1 bg-slate-950/80 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" />
-            <button onclick="fetchYouTubeTranscript()" id="fetch-btn" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg">
+            <button onclick="fetchYouTubeTranscript()" id="fetch-btn" class="px-5 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-lg">
               <span>📥</span>
               <span>ดึงซับไตเติล</span>
             </button>
@@ -469,7 +487,7 @@ function renderHtmlApp(): string {
               <input type="file" id="file-upload" accept=".vtt,.srt,.txt" onchange="handleFileUpload(event)" class="hidden">
             </label>
           </div>
-          <textarea id="subtitle-textarea" rows="6" placeholder="00:00:00.000 --> 00:00:05.000&#10;Hello, today we are looking at this program..."
+          <textarea id="subtitle-textarea" rows="6" placeholder="00:00:00.000 --> 00:00:05.000&#10;สวัสดีครับ วันนี้เราจะมาเรียนรู้วิธีติดตั้งโปรแกรม..."
             class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl p-4 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"></textarea>
         </div>
       </div>
@@ -489,7 +507,7 @@ function renderHtmlApp(): string {
       <!-- Controls & Language Selector -->
       <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800/80">
         <div class="flex items-center space-x-3 w-full sm:w-auto">
-          <span class="text-xs font-medium text-slate-400">ภาษาของคู่มือ:</span>
+          <span class="text-xs font-medium text-slate-400">ภาษาคู่มือ:</span>
           <select id="lang-select" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:ring-2 focus:ring-indigo-500">
             <option value="th">🇹🇭 ภาษาไทย (Thai)</option>
             <option value="en">🇬🇧 English</option>
@@ -498,12 +516,12 @@ function renderHtmlApp(): string {
 
         <button onclick="generateManualAction()" id="generate-btn" class="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-indigo-600 via-violet-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-sm rounded-xl transition shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2">
           <span>✨</span>
-          <span>สร้างคู่มือการใช้งาน (Generate Manual)</span>
+          <span id="generate-btn-text">สร้างคู่มือการใช้งาน (1-Click Generate)</span>
         </button>
       </div>
 
       <!-- Alert Box -->
-      <div id="status-alert" class="hidden p-4 rounded-xl text-sm border"></div>
+      <div id="status-alert" class="hidden p-4 rounded-xl text-xs border"></div>
     </div>
 
     <!-- Manuals Library Section (Categorized Grid with Thumbnails) -->
@@ -575,7 +593,7 @@ function renderHtmlApp(): string {
     <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
       <div class="flex items-center justify-between">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <span>⚙️</span> การตั้งค่า & ความปลอดภัย API
+          <span>⚙️</span> การตั้งค่า & ความปลอดภัย API Key
         </h3>
         <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-200 text-lg">&times;</button>
       </div>
@@ -586,7 +604,7 @@ function renderHtmlApp(): string {
           <input type="password" id="gemini-key-input" placeholder="AIzaSy..." 
             class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono" />
           <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-            🛡️ <strong>ความปลอดภัย:</strong> คีย์จะถูกส่งตรงไปยัง Google API เท่านั้น หากตั้งค่าในไฟล์ <code>.env</code> ระบบจะดึงอัตโนมัติโดยไม่ต้องกรอกในช่องนี้
+            🛡️ <strong>ความปลอดภัย:</strong> บันทึกลงเครื่องท่านเท่านั้น หากไม่ใส่คีย์ ระบบจะใช้โหมด Local Deterministic Engine ในการสกัดฟังก์ชันให้ฟรีโดยอัตโนมัติ
           </p>
         </div>
       </div>
@@ -600,8 +618,8 @@ function renderHtmlApp(): string {
 
   <!-- Footer -->
   <footer class="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500 space-y-1">
-    <p>ClipToManual &copy; 2026 - Governed by Oxlint & TypeScript Strict Anti-Slop Quality Gate</p>
-    <p class="text-[11px] text-slate-600">Free Tier Quota: 15 Requests/Min &bull; 1,500 Requests/Day &bull; NVIDIA GTX 1050 Ti Accelerated</p>
+    <p>ClipToManual &copy; 2026 - Governed by Oxlint & TypeScript Strict Quality Gate</p>
+    <p class="text-[11px] text-slate-600">Free Tier: 15 RPM / 1,500 Requests/Day &bull; High-Performance Automation</p>
   </footer>
 
   <script>
@@ -618,7 +636,21 @@ function renderHtmlApp(): string {
       if (savedKey) {
         document.getElementById('gemini-key-input').value = savedKey;
       }
+
+      // Allow pressing Enter in URL input to trigger 1-click generate
+      document.getElementById('yt-url-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          generateManualAction();
+        }
+      });
     });
+
+    function fillDemoUrl() {
+      const demoUrl = 'https://www.youtube.com/watch?v=k85mRPqvMbE';
+      document.getElementById('yt-url-input').value = demoUrl;
+      switchInputTab('yt');
+      showAlert('ใส่ลิงก์คลิปตัวอย่างเรียบร้อยแล้ว กดปุ่ม "สร้างคู่มือการใช้งาน" ได้ทันทีครับ', 'success');
+    }
 
     async function fetchDashboardStats() {
       try {
@@ -629,21 +661,25 @@ function renderHtmlApp(): string {
           // Key status
           const keyBadge = document.getElementById('dash-key-badge');
           const keyMasked = document.getElementById('dash-key-masked');
+          const browserKey = localStorage.getItem('gemini_api_key');
+
           if (data.apiKeyStatus.configured) {
             keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800';
-            keyBadge.textContent = 'Configured (' + data.apiKeyStatus.source + ')';
+            keyBadge.textContent = 'AI Key (.env)';
             keyMasked.textContent = data.apiKeyStatus.masked || 'Active in .env';
+          } else if (browserKey && browserKey.length > 5) {
+            keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800';
+            keyBadge.textContent = 'AI Key (Browser)';
+            keyMasked.textContent = browserKey.slice(0, 6) + '••••••••' + browserKey.slice(-4);
           } else {
-            const browserKey = localStorage.getItem('gemini_api_key');
-            if (browserKey) {
-              keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800';
-              keyBadge.textContent = 'Browser Saved';
-              keyMasked.textContent = browserKey.slice(0, 6) + '••••••••' + browserKey.slice(-4);
-            } else {
-              keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800';
-              keyBadge.textContent = 'Local Fallback';
-              keyMasked.textContent = 'ใส่ใน .env เพื่อเปิดโหมด AI';
-            }
+            keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800';
+            keyBadge.textContent = 'Free Local Engine';
+            keyMasked.textContent = 'โหมดในตัว (กด ⚙️ ใส่คีย์ AI ได้)';
+          }
+
+          // Hardware
+          if (data.engine && data.engine.hardware) {
+            document.getElementById('dash-engine-desc').textContent = data.engine.hardware;
           }
 
           // Quota
@@ -717,7 +753,7 @@ function renderHtmlApp(): string {
         const badgeColor = m.isMaster ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800';
         return '<div class="bg-slate-950/90 border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition flex flex-col group">' +
           '<div class="relative aspect-video w-full overflow-hidden bg-slate-900">' +
-            '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + escapeHtml(m.title) + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">' +
+            '<img src="' + escapeHtml(m.thumbnailUrl) + '" alt="' + escapeHtml(m.title) + '" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src=\'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80\'">' +
             '<div class="absolute top-2 left-2 flex gap-1.5">' +
               '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold border backdrop-blur-md ' + badgeColor + '">' + escapeHtml(m.episode) + '</span>' +
               '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-900/80 text-slate-300 border border-slate-700 backdrop-blur-md">' + escapeHtml(m.topic) + '</span>' +
@@ -754,7 +790,7 @@ function renderHtmlApp(): string {
         const mdText = await res.text();
         currentMarkdownOutput = mdText;
         
-        const firstLine = mdText.split('\n')[0]?.replace(new RegExp('^#\\s*📖?\\s*'), '') || 'คู่มือการใช้งาน';
+        const firstLine = mdText.split('\n')[0]?.replace(/^#\s*📖?\s*/, '') || 'คู่มือการใช้งาน';
         document.getElementById('reading-manual-title').textContent = firstLine;
 
         // Render Markdown with clickable YouTube timestamps and beautiful cards
@@ -770,12 +806,10 @@ function renderHtmlApp(): string {
 
     function renderMarkdownToHtml(md) {
       let html = md;
-
-      // Escape basic HTML
       html = escapeHtml(html);
 
       // Links: [text](url)
-      html = html.replace(new RegExp('\\x5B([^\\]]+)\\x5D\\((https?://[^\\s)]+)\\)', 'g'), '<a href="$2" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-medium">$1</a>');
+      html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline font-medium">$1</a>');
 
       // Headers
       html = html.replace(/^### (.*$)/gim, '<h3 class="text-base font-bold text-indigo-300 mt-6 mb-2 flex items-center gap-2">$1</h3>');
@@ -783,21 +817,21 @@ function renderHtmlApp(): string {
       html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl sm:text-3xl font-extrabold text-white mb-4 tracking-tight">$1</h1>');
 
       // Bold & Italic
-      html = html.replace(new RegExp('\\x2A\\x2A([^*]+)\\x2A\\x2A', 'g'), '<strong class="font-bold text-white">$1</strong>');
-      html = html.replace(new RegExp('\\x2A([^*]+)\\x2A', 'g'), '<em class="text-slate-300">$1</em>');
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-white">$1</strong>');
+      html = html.replace(/\*([^*]+)\*/g, '<em class="text-slate-300">$1</em>');
 
       // Inline code
       html = html.replace(new RegExp('\\x60([^\\x60]+)\\x60', 'g'), '<code class="bg-slate-950 px-1.5 py-0.5 rounded text-indigo-300 font-mono text-[11px] border border-slate-800">$1</code>');
 
       // Blockquotes & Alerts
-      html = html.replace(new RegExp('^> \\x5B!TIP\\x5D\\s*(.*$)', 'gim'), '<div class="p-3.5 my-3 rounded-xl border bg-emerald-950/40 border-emerald-800/60 text-emerald-200 text-xs flex items-start gap-2"><span>💡</span><span>$1</span></div>');
-      html = html.replace(new RegExp('^> \\x5B!WARNING\\x5D\\s*(.*$)', 'gim'), '<div class="p-3.5 my-3 rounded-xl border bg-amber-950/40 border-amber-800/60 text-amber-200 text-xs flex items-start gap-2"><span>⚠️</span><span>$1</span></div>');
-      html = html.replace(new RegExp('^> (.*$)', 'gim'), '<blockquote class="border-l-4 border-indigo-500/80 pl-3.5 py-1 text-slate-300 text-xs my-2 italic">$1</blockquote>');
+      html = html.replace(/^> \[!TIP\]\s*(.*$)/gim, '<div class="p-3.5 my-3 rounded-xl border bg-emerald-950/40 border-emerald-800/60 text-emerald-200 text-xs flex items-start gap-2"><span>💡</span><span>$1</span></div>');
+      html = html.replace(/^> \[!WARNING\]\s*(.*$)/gim, '<div class="p-3.5 my-3 rounded-xl border bg-amber-950/40 border-amber-800/60 text-amber-200 text-xs flex items-start gap-2"><span>⚠️</span><span>$1</span></div>');
+      html = html.replace(/^> (.*$)/gim, '<blockquote class="border-l-4 border-indigo-500/80 pl-3.5 py-1 text-slate-300 text-xs my-2 italic">$1</blockquote>');
 
       // HR
-      html = html.replace(new RegExp('^---$', 'gim'), '<hr class="border-slate-800 my-6">');
+      html = html.replace(/^---$/gim, '<hr class="border-slate-800 my-6">');
 
-      return '<div class="text-xs sm:text-sm text-slate-300 leading-relaxed space-y-2">' + html.replace(new RegExp('\\n', 'g'), '<br>') + '</div>';
+      return '<div class="text-xs sm:text-sm text-slate-300 leading-relaxed space-y-2">' + html.replace(/\n/g, '<br>') + '</div>';
     }
 
     function toggleSettingsModal() {
@@ -814,7 +848,7 @@ function renderHtmlApp(): string {
       }
       toggleSettingsModal();
       fetchDashboardStats();
-      showAlert('บันทึกการตั้งค่าเรียบร้อยแล้ว', 'success');
+      showAlert('บันทึกการตั้งค่า API Key เรียบร้อยแล้ว', 'success');
     }
 
     function switchInputTab(tab) {
@@ -824,13 +858,13 @@ function renderHtmlApp(): string {
       const subContent = document.getElementById('tab-sub-content');
 
       if (tab === 'yt') {
-        ytBtn.className = 'pb-3 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
-        subBtn.className = 'pb-3 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
+        ytBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
+        subBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
         ytContent.classList.remove('hidden');
         subContent.classList.add('hidden');
       } else {
-        subBtn.className = 'pb-3 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
-        ytBtn.className = 'pb-3 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
+        subBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
+        ytBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
         subContent.classList.remove('hidden');
         ytContent.classList.add('hidden');
       }
@@ -872,8 +906,8 @@ function renderHtmlApp(): string {
     async function fetchYouTubeTranscript() {
       const url = document.getElementById('yt-url-input').value.trim();
       if (!url) {
-        showAlert('กรุณากรอก YouTube URL', 'error');
-        return;
+        showAlert('กรุณากรอกหรือวาง YouTube URL', 'error');
+        return false;
       }
 
       currentVideoUrl = url;
@@ -887,15 +921,18 @@ function renderHtmlApp(): string {
         });
         const data = await res.json();
 
-        if (data.success) {
+        if (data.success && data.segments && data.segments.length > 0) {
           currentRawTranscript = data.fullText;
           showTranscriptPreview(data.segments, (data.metadata?.title || 'คลิปวิดีโอ') + ' (' + data.segments.length + ' รายการ)');
-          showAlert('ดึงซับไตเติลสำเร็จ! พร้อมสร้างคู่มือแล้วครับ', 'success');
+          showAlert('ดึงซับไตเติลสำเร็จ (' + data.segments.length + ' ข้อความ)', 'success');
+          return true;
         } else {
-          showAlert(data.error || 'ไม่พบซับไตเติลอัตโนมัติของคลิปนี้ คุณสามารถเลือกแท็บ Subtitle เพื่อวางข้อความหรืออัปโหลดไฟล์ .vtt/.srt ได้ครับ', 'error');
+          showAlert(data.error || 'ไม่พบซับไตเติลอัตโนมัติของคลิปนี้ คุณสามารถเลือกแท็บ Subtitle เพื่อวางข้อความซับไตเติลหรือไฟล์ .vtt/.srt ได้ครับ', 'error');
+          return false;
         }
       } catch (err) {
         showAlert('ข้อผิดพลาดเครือข่าย: ' + err.message, 'error');
+        return false;
       } finally {
         setLoading(false);
       }
@@ -918,28 +955,39 @@ function renderHtmlApp(): string {
 
     async function generateManualAction() {
       let transcript = currentRawTranscript;
+      const urlInput = document.getElementById('yt-url-input').value.trim();
       const subText = document.getElementById('subtitle-textarea').value.trim();
 
-      if (!transcript && subText) {
+      // If transcript not yet extracted, but YouTube URL is provided: Auto 1-Click Pull!
+      if (!transcript && urlInput) {
+        setLoading(true, '[1/2] 📥 กำลังดึงข้อมูลและซับไตเติลจาก YouTube...');
+        const fetched = await fetchYouTubeTranscript();
+        if (fetched) {
+          transcript = currentRawTranscript;
+        } else {
+          setLoading(false);
+          return;
+        }
+      } else if (!transcript && subText) {
         transcript = subText;
       }
 
       if (!transcript) {
-        showAlert('กรุณาดึงซับไตเติลจาก YouTube URL หรือวางข้อความ Subtitle ก่อนกดสร้างคู่มือครับ', 'error');
+        showAlert('กรุณาวาง YouTube URL หรือข้อความ Subtitle ก่อนกดสร้างคู่มือครับ', 'error');
         return;
       }
 
       const lang = document.getElementById('lang-select').value;
       const apiKey = localStorage.getItem('gemini_api_key') || '';
 
-      setLoading(true, 'AI กำลังวิเคราะห์วิดีโอ สกัดฟังก์ชัน และเรียบเรียงคู่มือทีละ Step...');
+      setLoading(true, '[2/2] ✨ AI กำลังวิเคราะห์วิดีโอ สกัดฟังก์ชัน และเรียบเรียงคู่มือทีละ Step...');
 
       try {
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            youtubeUrl: currentVideoUrl,
+            youtubeUrl: currentVideoUrl || urlInput,
             rawTranscript: transcript,
             language: lang,
             apiKey: apiKey
@@ -954,7 +1002,7 @@ function renderHtmlApp(): string {
           document.getElementById('output-container').scrollIntoView({ behavior: 'smooth' });
           fetchDashboardStats();
           loadManualsLibrary();
-          showAlert('สร้างคู่มือการใช้งานสำเร็จและบันทึกลงคลังเรียบร้อย!', 'success');
+          showAlert('🎉 สร้างคู่มือการใช้งานสำเร็จและบันทึกลงคลังเรียบร้อย!', 'success');
         } else {
           showAlert(data.error || 'เกิดข้อผิดพลาดในการสร้างคู่มือ', 'error');
         }
@@ -1129,12 +1177,13 @@ function renderHtmlApp(): string {
 
     function setLoading(isLoading, text = '') {
       const btn = document.getElementById('generate-btn');
+      const btnText = document.getElementById('generate-btn-text');
       if (isLoading) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="animate-spin">🌀</span><span>' + text + '</span>';
+        btnText.textContent = text || 'กำลังประมวลผล...';
       } else {
         btn.disabled = false;
-        btn.innerHTML = '<span>✨</span><span>สร้างคู่มือการใช้งาน (Generate Manual)</span>';
+        btnText.textContent = 'สร้างคู่มือการใช้งาน (1-Click Generate)';
       }
     }
 

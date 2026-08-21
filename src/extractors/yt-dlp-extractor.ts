@@ -43,7 +43,7 @@ export async function getYtDlpExecutable(): Promise<string> {
 export async function isYtDlpAvailable(): Promise<boolean> {
   const cmd = await getYtDlpExecutable();
   return new Promise((resolve) => {
-    const proc = spawn(cmd, ['--version'], { shell: true });
+    const proc = spawn(cmd, ['--version'], { windowsHide: true });
     proc.on('error', () => resolve(false));
     proc.on('close', (code) => resolve(code === 0));
   });
@@ -64,62 +64,60 @@ export async function extractWithYtDlp(rawUrl: string): Promise<YtDlpExtractionR
   try {
     // 1. Fetch metadata and dump JSON
     try {
-      const metadataOutput = await runCommandAsync(cmd, [
+      const metadataOutput = await runCommandSafe(cmd, [
         '--dump-json',
         '--skip-download',
         '--no-playlist',
-        `"${cleanUrl}"`
+        cleanUrl
       ]);
 
-      const parsed = JSON.parse(metadataOutput) as {
-        id?: string;
-        title?: string;
-        uploader?: string;
-        duration?: number;
-        webpage_url?: string;
-        chapters?: Array<{ title?: string; start_time?: number; end_time?: number }>;
-      };
+      if (metadataOutput.trim().length > 0) {
+        const parsed = JSON.parse(metadataOutput) as {
+          id?: string;
+          title?: string;
+          uploader?: string;
+          duration?: number;
+          webpage_url?: string;
+          chapters?: Array<{ title?: string; start_time?: number; end_time?: number }>;
+        };
 
-      videoInfo = {
-        id: parsed.id ?? parsedUrl.videoId ?? '',
-        title: parsed.title ?? 'Video',
-        uploader: parsed.uploader,
-        duration: parsed.duration,
-        webpageUrl: parsed.webpage_url ?? cleanUrl,
-        chapters: (parsed.chapters ?? []).map((ch) => ({
-          title: ch.title ?? '',
-          startTime: ch.start_time ?? 0,
-          endTime: ch.end_time ?? 0
-        }))
-      };
+        videoInfo = {
+          id: parsed.id ?? parsedUrl.videoId ?? '',
+          title: parsed.title ?? 'Video',
+          uploader: parsed.uploader,
+          duration: parsed.duration,
+          webpageUrl: parsed.webpage_url ?? cleanUrl,
+          chapters: (parsed.chapters ?? []).map((ch) => ({
+            title: ch.title ?? '',
+            startTime: ch.start_time ?? 0,
+            endTime: ch.end_time ?? 0
+          }))
+        };
+      }
     } catch {
       // ignore metadata failure and continue to subtitles
     }
 
     // 2. Download subtitles (prefer th-orig, th, en-orig, en)
     const outTemplate = path.join(tempDir, '%(id)s.%(ext)s');
-    try {
-      await runCommandAsync(cmd, [
-        '--write-auto-sub',
-        '--write-sub',
-        '--sub-lang',
-        'th-orig,th,en-orig,en,all',
-        '--sub-format',
-        'vtt',
-        '--skip-download',
-        '--no-playlist',
-        '--ignore-errors',
-        '-o',
-        `"${outTemplate}"`,
-        `"${cleanUrl}"`
-      ]);
-    } catch {
-      // Subtitle downloader might log 429 on auto-translate but still download primary language
-    }
+    await runCommandSafe(cmd, [
+      '--write-sub',
+      '--write-auto-sub',
+      '--sub-lang',
+      'th,th-TH,th-orig,en,en-US,en-orig',
+      '--sub-format',
+      'vtt',
+      '--skip-download',
+      '--no-playlist',
+      '--ignore-errors',
+      '-o',
+      outTemplate,
+      cleanUrl
+    ]);
 
-    // 3. Find generated .vtt file by preference
+    // 3. Find generated .vtt or .srt file by preference
     const files = await fs.readdir(tempDir);
-    const vttFiles = files.filter((f) => f.endsWith('.vtt'));
+    const vttFiles = files.filter((f) => f.endsWith('.vtt') || f.endsWith('.srt'));
 
     if (vttFiles.length === 0) {
       return {
@@ -135,16 +133,16 @@ export async function extractWithYtDlp(rawUrl: string): Promise<YtDlpExtractionR
               lengthSeconds: videoInfo.duration
             }
           : undefined,
-        error: 'yt-dlp found no subtitles/captions for this video.'
+        error: 'yt-dlp ไม่พบซับไตเติลของคลิปนี้ คุณสามารถวางข้อความซับไตเติลเองในแท็บ Subtitle ได้ครับ'
       };
     }
 
     // Sort by preferred language: th-orig > th > en-orig > en > first available
     const chosenFile =
-      vttFiles.find((f) => f.includes('th-orig')) ??
-      vttFiles.find((f) => f.includes('.th.')) ??
-      vttFiles.find((f) => f.includes('en-orig')) ??
-      vttFiles.find((f) => f.includes('.en.')) ??
+      vttFiles.find((f) => f.toLowerCase().includes('th-orig')) ??
+      vttFiles.find((f) => f.toLowerCase().includes('th')) ??
+      vttFiles.find((f) => f.toLowerCase().includes('en-orig')) ??
+      vttFiles.find((f) => f.toLowerCase().includes('en')) ??
       vttFiles[0];
 
     if (!chosenFile) {
@@ -152,7 +150,7 @@ export async function extractWithYtDlp(rawUrl: string): Promise<YtDlpExtractionR
         success: false,
         segments: [],
         fullText: '',
-        error: 'Could not select a subtitle file.'
+        error: 'ไม่สามารถเลือกไฟล์ซับไตเติลได้'
       };
     }
 
@@ -181,7 +179,7 @@ export async function extractWithYtDlp(rawUrl: string): Promise<YtDlpExtractionR
       success: false,
       segments: [],
       fullText: '',
-      error: `yt-dlp extraction failed: ${message}`
+      error: `การดึงข้อมูลผิดพลาด: ${message}`
     };
   } finally {
     // Cleanup temporary directory
@@ -193,29 +191,21 @@ export async function extractWithYtDlp(rawUrl: string): Promise<YtDlpExtractionR
   }
 }
 
-function runCommandAsync(command: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fullCommand = `${command} ${args.join(' ')}`;
-    const proc = spawn(fullCommand, { shell: true });
+function runCommandSafe(command: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    const proc = spawn(command, args, { windowsHide: true });
     let stdout = '';
-    let stderr = '';
 
     proc.stdout.on('data', (data: Buffer) => {
       stdout += data.toString();
     });
 
-    proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
+    proc.on('close', () => {
+      resolve(stdout);
     });
 
-    proc.on('close', (code) => {
-      if (code === 0 || stdout.length > 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(stderr || `Process exited with code ${code}`));
-      }
+    proc.on('error', () => {
+      resolve('');
     });
-
-    proc.on('error', reject);
   });
 }
