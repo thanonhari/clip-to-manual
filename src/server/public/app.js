@@ -812,6 +812,52 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+let uiTagsVisible = true;
+
+function toggleUiTags() {
+  uiTagsVisible = !uiTagsVisible;
+  const tags = document.querySelectorAll('.ui-tag');
+  tags.forEach(t => {
+    if (uiTagsVisible) {
+      t.classList.remove('hidden');
+    } else {
+      t.classList.add('hidden');
+    }
+  });
+
+  const btnText = document.getElementById('uitags-btn-text');
+  if (btnText) {
+    btnText.textContent = uiTagsVisible ? 'ป้ายชื่อ UI (เปิดอยู่)' : 'ป้ายชื่อ UI (ปิดอยู่)';
+  }
+  showToast(uiTagsVisible ? '🏷️ เปิดการแสดงป้ายชื่อชิ้นส่วน UI แล้ว' : '🏷️ ปิดการแสดงป้ายชื่อชิ้นส่วนแล้ว');
+}
+
+function copyUiTag(tagName) {
+  navigator.clipboard.writeText(tagName);
+  showToast('📋 คัดลอก "' + tagName + '" เรียบร้อย! นำไปบอก AI ได้เลย');
+  logEvent('info', 'คัดลอกชื่อชิ้นส่วน UI: ' + tagName);
+}
+
+function toggleUiGlossaryModal() {
+  const modal = document.getElementById('glossary-modal');
+  if (modal) modal.classList.toggle('hidden');
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const toast = document.getElementById('ui-toast');
+  const msgEl = document.getElementById('ui-toast-msg');
+  if (!toast || !msgEl) return;
+
+  msgEl.textContent = msg;
+  toast.classList.remove('hidden');
+
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.add('hidden');
+  }, 3500);
+}
+
 // Expose functions globally for HTML onclick handlers
 Object.assign(window, {
   initApp,
@@ -843,5 +889,9 @@ Object.assign(window, {
   copyMarkdown,
   downloadMarkdown,
   showAlert,
-  hideAlert
+  hideAlert,
+  toggleUiTags,
+  copyUiTag,
+  toggleUiGlossaryModal,
+  showToast
 });

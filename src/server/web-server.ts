@@ -474,11 +474,13 @@ function renderHtmlApp(ssr?: SsrState): string {
       50% { opacity: 0.6; transform: scale(1.03); }
     }
     .pulse-step { animation: pulse-fast 1.5s infinite ease-in-out; }
+    .ui-tag { transition: all 0.2s ease-in-out; }
+    .ui-tag:hover { transform: translateY(-1px); }
   </style>
 </head>
 <body class="min-h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
 
-  <!-- Header -->
+  <!-- Header: Application Navbar / AppHeader -->
   <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       <div class="flex items-center space-x-3">
@@ -486,103 +488,147 @@ function renderHtmlApp(ssr?: SsrState): string {
           <span class="text-xl">📖</span>
         </div>
         <div>
-          <span class="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">ClipToManual</span>
-          <span class="text-xs px-2.5 py-0.5 ml-2 bg-indigo-950/90 text-indigo-300 border border-indigo-700/60 rounded-full font-semibold">v1.1.0 • Stepper & Telegram Sync</span>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">ClipToManual</span>
+            <span class="text-xs px-2.5 py-0.5 bg-indigo-950/90 text-indigo-300 border border-indigo-700/60 rounded-full font-semibold">v1.2.0</span>
+            <span class="ui-tag px-2 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-700 font-mono text-[9px] cursor-pointer hover:bg-indigo-900 shadow" onclick="copyUiTag('[Header: AppNavbar]')">🏷️ #Header</span>
+          </div>
         </div>
       </div>
-      <div class="flex items-center space-x-3">
-        <button onclick="openManualsLibrary()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 transition flex items-center gap-1.5 shadow-md">
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <!-- UI Inspector Toggle Button -->
+        <button onclick="toggleUiTags()" id="toggle-uitags-btn" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/40 transition flex items-center gap-1.5 shadow" title="เปิด/ปิด ป้ายชื่อเรียกทางคอมพิวเตอร์">
+          <span>🏷️</span>
+          <span id="uitags-btn-text">ป้ายชื่อ UI (เปิดอยู่)</span>
+        </button>
+        <!-- UI/UX Glossary Button -->
+        <button onclick="toggleUiGlossaryModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5" title="ดูคำอธิบายศัพท์ UI/UX">
+          <span>📖</span>
+          <span class="hidden sm:inline">ศัพท์ UI</span>
+        </button>
+        <button onclick="openManualsLibrary()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 transition flex items-center gap-1.5 shadow-md">
           <span>📚</span>
-          <span>คลังคู่มือ & ปก (<span id="nav-manuals-count">${manualsCount}</span>)</span>
+          <span class="hidden sm:inline">คลังคู่มือ & ปก</span> (<span id="nav-manuals-count">${manualsCount}</span>)
         </button>
         <button onclick="toggleSettingsModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
           <span>⚙️</span>
-          <span>ตั้งค่า / API Key</span>
+          <span class="hidden sm:inline">ตั้งค่า / API</span>
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Main Container -->
+  <!-- Main Container: Layout Main Area -->
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
     
-    <!-- Dashboard Status Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      
-      <!-- Card 1: API & Security Status -->
-      <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
-        <div class="flex items-center justify-between text-xs text-slate-400">
-          <span class="font-medium">🛡️ Gemini API Key</span>
-          <span id="dash-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${keyBadgeClass}">${keyLabel}</span>
-        </div>
-        <div id="dash-key-masked" class="text-xs font-mono font-bold text-indigo-300 truncate">${keyMasked}</div>
-        <div class="text-[11px] text-slate-500">ซ่อนอัตโนมัติ ปลอดภัยเวลาแชร์จอ</div>
+    <!-- Dashboard Status Grid: Container 4-Column Metric Cards -->
+    <div class="relative">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">📊 แผงควบคุมระบบ (Dashboard Metrics Grid)</span>
+        <span class="ui-tag px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono text-[9px] cursor-pointer hover:bg-slate-700" onclick="copyUiTag('[Grid: DashboardMetrics]')">🏷️ [Grid: DashboardMetrics]</span>
       </div>
 
-      <!-- Card 2: Quota & Usage -->
-      <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
-        <div class="flex items-center justify-between text-xs text-slate-400">
-          <span class="font-medium">📊 Quota วันนี้ (Free Tier)</span>
-          <span class="text-emerald-400 font-bold">15 RPM</span>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <!-- Card 1: API & Security Status -->
+        <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2 relative group">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span class="font-medium">🛡️ Gemini API Key</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-mono text-[9px] cursor-pointer hover:bg-indigo-900" onclick="copyUiTag('[Card 1: StatusCard - Gemini API]')">🏷️ Card 1 (StatusCard)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span id="dash-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${keyBadgeClass}">${keyLabel}</span>
+          </div>
+          <div id="dash-key-masked" class="text-xs font-mono font-bold text-indigo-300 truncate">${keyMasked}</div>
+          <div class="text-[11px] text-slate-500">ซ่อนอัตโนมัติ ปลอดภัยเวลาแชร์จอ</div>
         </div>
-        <div class="text-lg font-bold text-white flex items-baseline gap-1.5">
-          <span id="dash-quota-used">${requestsToday}</span>
-          <span class="text-xs text-slate-500 font-normal">/ 1,500 คลิปต่อวัน</span>
-        </div>
-        <div class="w-full bg-slate-800 rounded-full h-1.5">
-          <div id="dash-quota-bar" class="bg-indigo-500 h-1.5 rounded-full" style="width: 1%"></div>
-        </div>
-      </div>
 
-      <!-- Card 3: Engine & Acceleration -->
-      <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
-        <div class="flex items-center justify-between text-xs text-slate-400">
-          <span class="font-medium">⚡ Extractor & Hardware</span>
-          <span id="dash-ytdlp-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">yt-dlp พร้อม</span>
+        <!-- Card 2: Quota & Usage -->
+        <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2 relative group">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span class="font-medium">📊 Quota วันนี้ (Free Tier)</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-mono text-[9px] cursor-pointer hover:bg-indigo-900" onclick="copyUiTag('[Card 2: MetricCard - Quota Daily Limit]')">🏷️ Card 2 (MetricCard)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="text-lg font-bold text-white flex items-baseline gap-1.5">
+              <span id="dash-quota-used">${requestsToday}</span>
+              <span class="text-xs text-slate-500 font-normal">/ 1,500 คลิปต่อวัน</span>
+            </div>
+            <span class="text-emerald-400 font-bold text-xs">15 RPM</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5">
+            <div id="dash-quota-bar" class="bg-indigo-500 h-1.5 rounded-full" style="width: 1%"></div>
+          </div>
         </div>
-        <div id="dash-engine-desc" class="text-xs font-bold text-slate-200 truncate" title="${hardware}">${hardware}</div>
-        <div class="text-[11px] text-slate-500">ดึง Chapters & ซับไตเติลแม่นยำ</div>
-      </div>
 
-      <!-- Card 4: Library Count -->
-      <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
-        <div class="flex items-center justify-between text-xs text-slate-400">
-          <span class="font-medium">📁 คลังคู่มือแยกหมวดหมู่</span>
-          <span class="text-xs text-indigo-400 cursor-pointer hover:underline" onclick="openManualsLibrary()">ดูคลังปก &rarr;</span>
+        <!-- Card 3: Engine & Acceleration -->
+        <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2 relative group">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span class="font-medium">⚡ Extractor & Hardware</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-mono text-[9px] cursor-pointer hover:bg-indigo-900" onclick="copyUiTag('[Card 3: EngineCard - Extractor & Hardware]')">🏷️ Card 3 (EngineCard)</span>
+          </div>
+          <div id="dash-engine-desc" class="text-xs font-bold text-slate-200 truncate" title="${hardware}">${hardware}</div>
+          <div class="flex items-center justify-between text-[11px] text-slate-500">
+            <span>ดึง Chapters & ซับไตเติลแม่นยำ</span>
+            <span id="dash-ytdlp-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">yt-dlp พร้อม</span>
+          </div>
         </div>
-        <div class="text-lg font-bold text-white flex items-baseline gap-1.5">
-          <span id="dash-manuals-count">${manualsCount}</span>
-          <span class="text-xs text-slate-500 font-normal">คู่มือพร้อมรูปปก</span>
-        </div>
-        <div class="text-[11px] text-slate-500">จัดกลุ่มตามคอร์ส/เรื่องอัตโนมัติ</div>
-      </div>
 
+        <!-- Card 4: Library Count -->
+        <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2 relative group">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span class="font-medium">📁 คลังคู่มือแยกหมวดหมู่</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-mono text-[9px] cursor-pointer hover:bg-indigo-900" onclick="copyUiTag('[Card 4: CatalogCard - Manuals Counter]')">🏷️ Card 4 (CatalogCard)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="text-lg font-bold text-white flex items-baseline gap-1.5">
+              <span id="dash-manuals-count">${manualsCount}</span>
+              <span class="text-xs text-slate-500 font-normal">คู่มือพร้อมรูปปก</span>
+            </div>
+            <span class="text-xs text-indigo-400 cursor-pointer hover:underline" onclick="openManualsLibrary()">ดูคลังปก &rarr;</span>
+          </div>
+          <div class="text-[11px] text-slate-500">จัดกลุ่มตามคอร์ส/เรื่องอัตโนมัติ</div>
+        </div>
+
+      </div>
     </div>
 
-    <!-- Generator Box -->
-    <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6">
+    <!-- Generator Box: Input Form Controller -->
+    <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6 relative">
       
-      <!-- Input Tabs & 1-Click Demo -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
-        <div class="flex space-x-4">
-          <button id="tab-yt-btn" onclick="switchInputTab('yt')" class="pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2">
-            <span>🎥</span> YouTube URL / Playlist
-          </button>
-          <button id="tab-sub-btn" onclick="switchInputTab('sub')" class="pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2">
-            <span>📝</span> Subtitle / VTT / SRT
-          </button>
+      <!-- Section Tag -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <span>⚡</span> กล่องรับข้อมูลและควบคุมการสร้าง (Input Form & Generator Box)
+          </h2>
+          <span class="ui-tag px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-700 font-mono text-[9px] cursor-pointer hover:bg-purple-900" onclick="copyUiTag('[Section: GeneratorBox - Input Form Controller]')">🏷️ [Section: GeneratorBox]</span>
         </div>
-        <div>
-          <button onclick="fillDemoUrl()" class="px-3 py-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow">
-            <span>⚡</span> <span>ลองคลิปตัวอย่าง (1-Click Demo)</span>
-          </button>
-        </div>
+        <button onclick="fillDemoUrl()" class="px-3 py-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow">
+          <span>⚡</span> <span>ลองคลิปตัวอย่าง (1-Click Demo)</span>
+          <span class="ui-tag px-1 rounded bg-slate-900 text-slate-400 text-[8px]" onclick="event.stopPropagation(); copyUiTag('[Button: 1-Click-Demo-Action]')">#DemoBtn</span>
+        </button>
+      </div>
+
+      <!-- Input Tabs -->
+      <div class="flex space-x-4 border-b border-slate-800/80 pb-2">
+        <button id="tab-yt-btn" onclick="switchInputTab('yt')" class="pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2">
+          <span>🎥</span> YouTube URL / Playlist
+          <span class="ui-tag px-1.5 rounded bg-slate-800 text-slate-400 text-[8px] font-mono" onclick="event.stopPropagation(); copyUiTag('[Tab 1: YouTube-URL-Input-Tab]')">#Tab-YouTube</span>
+        </button>
+        <button id="tab-sub-btn" onclick="switchInputTab('sub')" class="pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2">
+          <span>📝</span> Subtitle / VTT / SRT
+          <span class="ui-tag px-1.5 rounded bg-slate-800 text-slate-400 text-[8px] font-mono" onclick="event.stopPropagation(); copyUiTag('[Tab 2: Subtitle-Direct-Input-Tab]')">#Tab-Subtitle</span>
+        </button>
       </div>
 
       <!-- Tab 1: YouTube Input -->
       <div id="tab-yt-content" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">วางลิงก์ YouTube Video หรือ Playlist (กด Enter หรือกดปุ่มสร้างได้ทันที)</label>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">วางลิงก์ YouTube Video หรือ Playlist (กด Enter หรือกดปุ่มสร้างได้ทันที)</label>
+            <span class="ui-tag text-[9px] font-mono text-slate-500 cursor-pointer" onclick="copyUiTag('[Input: YouTube-URL-InputField]')">🏷️ #Input: yt-url-input</span>
+          </div>
           <div class="flex flex-col sm:flex-row gap-3">
             <input id="yt-url-input" type="text" placeholder="https://www.youtube.com/watch?v=... หรือ Playlist URL" 
               class="flex-1 bg-slate-950/80 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition" />
@@ -610,12 +656,15 @@ function renderHtmlApp(ssr?: SsrState): string {
       </div>
 
       <!-- Live Step-by-Step Progress Animation Box -->
-      <div id="progress-stepper-box" class="hidden rounded-xl bg-slate-950/90 border border-indigo-500/40 p-5 space-y-4 shadow-xl">
+      <div id="progress-stepper-box" class="hidden rounded-xl bg-slate-950/90 border border-indigo-500/40 p-5 space-y-4 shadow-xl relative">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-indigo-300 flex items-center gap-2">
-            <span class="animate-spin text-sm">🌀</span>
-            <span id="stepper-main-status">กำลังดำเนินการ...</span>
-          </span>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-indigo-300 flex items-center gap-2">
+              <span class="animate-spin text-sm">🌀</span>
+              <span id="stepper-main-status">กำลังดำเนินการ...</span>
+            </span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono text-[9px] cursor-pointer" onclick="copyUiTag('[Component: ProgressStepper - Multi-Step Timeline]')">🏷️ [Component: ProgressStepper]</span>
+          </div>
           <span id="stepper-elapsed-time" class="text-xs font-mono text-slate-400">0s</span>
         </div>
         
@@ -673,15 +722,17 @@ function renderHtmlApp(ssr?: SsrState): string {
         <button onclick="generateManualAction()" id="generate-btn" class="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-indigo-600 via-violet-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-sm rounded-xl transition shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2">
           <span>✨</span>
           <span id="generate-btn-text">สร้างคู่มือการใช้งาน (1-Click Generate)</span>
+          <span class="ui-tag px-1.5 rounded bg-slate-950/80 text-pink-300 font-mono text-[9px]" onclick="event.stopPropagation(); copyUiTag('[Button: GenerateManualAction - Primary CTA]')">#CTA-Button</span>
         </button>
       </div>
 
       <!-- Enhanced Error Diagnostic Box with 1-Click Copy -->
-      <div id="error-diagnostic-box" class="hidden rounded-xl bg-rose-950/70 border border-rose-800/90 p-5 space-y-3 shadow-2xl">
+      <div id="error-diagnostic-box" class="hidden rounded-xl bg-rose-950/70 border border-rose-800/90 p-5 space-y-3 shadow-2xl relative">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 text-rose-300 font-bold text-xs">
             <span class="text-base">⚠️</span>
             <span id="error-title-text">เกิดข้อผิดพลาดในการประมวลผล</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-rose-900 text-rose-200 border border-rose-600 font-mono text-[9px] cursor-pointer" onclick="copyUiTag('[Alert: ErrorDiagnostics - Troubleshooting Card]')">🏷️ [Alert: ErrorDiagnostics]</span>
           </div>
           <button onclick="copyErrorDiagnostics()" class="px-3 py-1.5 bg-rose-900/90 hover:bg-rose-800 border border-rose-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow">
             <span>📋</span>
@@ -701,6 +752,7 @@ function renderHtmlApp(ssr?: SsrState): string {
             <span>🖥️</span>
             <span>Live Activity / Debug Log (<span id="log-count">0</span> รายการ)</span>
             <span id="log-toggle-arrow" class="text-[10px] transition">▼</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono text-[9px]" onclick="event.stopPropagation(); copyUiTag('[Console: ActivityTerminal - Live Event Logger]')">🏷️ [Console: ActivityTerminal]</span>
           </button>
           <button onclick="copyTerminalLogs()" class="text-[11px] text-indigo-400 hover:text-indigo-300 underline">
             📋 คัดลอก Logs ทั้งหมด
@@ -715,13 +767,16 @@ function renderHtmlApp(ssr?: SsrState): string {
       <div id="status-alert" class="hidden p-4 rounded-xl text-xs border"></div>
     </div>
 
-    <!-- Manuals Library Section (Categorized Grid with Thumbnails) -->
-    <div id="manuals-library-section" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
+    <!-- Manuals Library Section: Categorized Course Bookshelf -->
+    <div id="manuals-library-section" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative">
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
-          <h2 class="text-lg font-bold text-white flex items-center gap-2">
-            <span>📚</span> คลังคู่มือแยกตามหมวดหมู่ & รูปปกตัวอย่าง
-          </h2>
+          <div class="flex items-center gap-2">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>📚</span> คลังคู่มือแยกตามหมวดหมู่ & รูปปกตัวอย่าง
+            </h2>
+            <span class="ui-tag px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-700 font-mono text-[9px] cursor-pointer hover:bg-blue-900" onclick="copyUiTag('[Section: CatalogGrid - Categorized Course Bookshelf]')">🏷️ [Section: CatalogGrid]</span>
+          </div>
           <p class="text-xs text-slate-400 mt-1">คู่มือที่จัดเก็บไว้ในเครื่อง สามารถค้นหา เปิดอ่าน หรือดาวน์โหลดได้ทันที</p>
         </div>
         <div class="flex items-center gap-2 w-full sm:w-auto">
@@ -730,25 +785,26 @@ function renderHtmlApp(ssr?: SsrState): string {
         </div>
       </div>
 
-      <!-- Category Filter Tabs -->
+      <!-- Category Filter Tabs (Filter Pills) -->
       <div id="manual-category-tabs" class="flex flex-wrap gap-2">
         <!-- Rendered dynamically -->
       </div>
 
-      <!-- Cards Grid -->
+      <!-- Cards Grid (Catalog Grid) -->
       <div id="manuals-grid-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <!-- Rendered dynamically -->
       </div>
     </div>
 
-    <!-- Output Display Area -->
+    <!-- Output Display Area: Reading View / Markdown Viewer -->
     <div id="output-container" class="hidden space-y-6">
       
-      <!-- Output Actions Header -->
+      <!-- Output Actions Header (Toolbar) -->
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl sticky top-20 z-40 backdrop-blur-xl">
         <div>
           <div class="flex items-center gap-2 mb-1">
             <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">Reading View</span>
+            <span class="ui-tag px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono text-[9px] cursor-pointer" onclick="copyUiTag('[Section: ReadingView - Markdown Document Viewer]')">🏷️ [Section: ReadingView]</span>
             <span id="output-meta-text" class="text-xs text-slate-400">บันทึกสำเนาลงใน /manuals เรียบร้อย</span>
           </div>
           <h2 class="text-lg font-bold text-white flex items-center gap-2">
@@ -771,7 +827,7 @@ function renderHtmlApp(ssr?: SsrState): string {
         </div>
       </div>
 
-      <!-- Output View -->
+      <!-- Output View: Document Layout -->
       <div id="manual-view" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-10 space-y-8 shadow-2xl">
         <!-- Rendered dynamically -->
       </div>
@@ -779,13 +835,16 @@ function renderHtmlApp(ssr?: SsrState): string {
 
   </main>
 
-  <!-- Settings Modal -->
+  <!-- Settings Modal: Dialog / Modal Window -->
   <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
       <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <span>⚙️</span> การตั้งค่า & ความปลอดภัย API Key
-        </h3>
+        <div class="flex items-center gap-2">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>⚙️</span> การตั้งค่า & ความปลอดภัย API Key
+          </h3>
+          <span class="ui-tag px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700 font-mono text-[9px] cursor-pointer" onclick="copyUiTag('[Modal: SettingsDialog - Config Window]')">🏷️ [Modal: SettingsDialog]</span>
+        </div>
         <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-200 text-lg">&times;</button>
       </div>
 
@@ -815,9 +874,97 @@ function renderHtmlApp(ssr?: SsrState): string {
     </div>
   </div>
 
+  <!-- UI/UX Glossary Modal: Engineering Reference -->
+  <div id="glossary-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 sm:p-8 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>📖</span> พจนานุกรมศัพท์ UI/UX & โครงสร้างหน้าจอ (Computer Component Names)
+        </h3>
+        <button onclick="toggleUiGlossaryModal()" class="text-slate-400 hover:text-slate-200 text-xl font-bold">&times;</button>
+      </div>
+
+      <p class="text-xs text-slate-300 leading-relaxed">
+        ในทางวิศวกรรมคอมพิวเตอร์และเว็บ หน้าจอโปรแกรมถูกแบ่งเป็นชิ้นส่วน (Components) ท่านสามารถคลิกที่ป้าย <strong>🏷️ [Tag Name]</strong> ในหน้าเว็บ เพื่อคัดลอกชื่อไปบอก AI ได้ทันทีครับ:
+      </p>
+
+      <div class="overflow-x-auto border border-slate-800 rounded-xl">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800">
+            <tr>
+              <th class="p-3">ชื่อเรียกทางคอมพิวเตอร์</th>
+              <th class="p-3">ความหมาย / หน้าที่</th>
+              <th class="p-3">ตำแหน่งในหน้านี้</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800 text-slate-300">
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Navbar (Header)</td>
+              <td class="p-3">แถบนำทางส่วนบนสุดของแอป สำหรับใส่โลโก้และปุ่มลัด</td>
+              <td class="p-3 text-slate-400">ด้านบนสุด</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Metric Card / Stat Card</td>
+              <td class="p-3">การ์ดสี่เหลี่ยมแสดงตัวเลขสรุปหรือสถานะฮาร์ดแวร์/โควตา</td>
+              <td class="p-3 text-slate-400">Card 1 ถึง Card 4</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Input Form / Controller Box</td>
+              <td class="p-3">กล่องรับข้อมูลสำหรับพิมพ์ข้อความ/วางลิงก์และปุ่ม Action</td>
+              <td class="p-3 text-slate-400">กล่องวางลิงก์ YouTube</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Tab Navigation</td>
+              <td class="p-3">ปุ่มสลับหน้าย่อยในกรอบเดียวกัน (เช่น สลับ YouTube / Subtitle)</td>
+              <td class="p-3 text-slate-400">เหนือช่องกรอก URL</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Progress Stepper</td>
+              <td class="p-3">ไทม์ไลน์แสดงสเต็ป 1-2-3 ว่าตอนนี้งานวิ่งถึงขั้นตอนไหน</td>
+              <td class="p-3 text-slate-400">กล่องหมุนสีครามเวลาสร้าง</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Console Terminal / Log Stream</td>
+              <td class="p-3">กล่องข้อความบันทึกเหตุการณ์สดและเวลาเหมือนหน้าจอโปรแกรมเมอร์</td>
+              <td class="p-3 text-slate-400">Live Activity Log ด้านล่าง</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Catalog Grid / Card Bookshelf</td>
+              <td class="p-3">ตะแกรงเรียงการ์ดคู่มือพร้อมรูปปก (Card Layout)</td>
+              <td class="p-3 text-slate-400">คลังคู่มือ & รูปปกตัวอย่าง</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Reading View / Markdown Viewer</td>
+              <td class="p-3">มุมมองเปิดอ่านเอกสารคู่มือพร้อมแถบ Toolbar</td>
+              <td class="p-3 text-slate-400">หน้ารายละเอียดคู่มือ</td>
+            </tr>
+            <tr class="hover:bg-slate-800/40">
+              <td class="p-3 font-mono text-indigo-300 font-bold">Modal Dialog</td>
+              <td class="p-3">หน้าต่างป๊อปอัปที่เด้งซ้อนขึ้นมาเพื่อตั้งค่า</td>
+              <td class="p-3 text-slate-400">หน้าต่างตั้งค่า / API Key</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex justify-end pt-2 border-t border-slate-800">
+        <button onclick="toggleUiGlossaryModal()" class="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500">เข้าใจแล้ว</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="ui-toast" class="fixed bottom-6 right-6 bg-indigo-950 border border-indigo-500 text-indigo-200 px-4 py-2.5 rounded-xl text-xs font-bold shadow-2xl z-50 hidden flex items-center gap-2">
+    <span>📋</span>
+    <span id="ui-toast-msg">คัดลอกชื่อชิ้นส่วนแล้ว!</span>
+  </div>
+
   <!-- Footer -->
   <footer class="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500 space-y-1">
     <p>ClipToManual &copy; 2026 - Governed by Oxlint & TypeScript Strict Quality Gate</p>
+    <p class="text-[11px] text-slate-600">Free Tier: 15 RPM / 1,500 Requests/Day &bull; High-Performance Automation</p>
+  </footer>
+
   <script src="/app.js"></script>
 </body>
 </html>`;
