@@ -506,6 +506,57 @@ function renderHtmlApp(ssr?: SsrState): string {
     .pulse-step { animation: pulse-fast 1.5s infinite ease-in-out; }
     .ui-tag { transition: all 0.2s ease-in-out; }
     .ui-tag:hover { transform: translateY(-1px); }
+
+    /* 🖨️ Official Thai Government / Sarabun Standard Print Stylesheet */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 25mm 20mm 20mm 30mm; /* Top 2.5cm, Right 2.0cm, Bottom 2.0cm, Left 3.0cm */
+      }
+      *, *::before, *::after {
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-family: 'Sarabun', 'TH Sarabun New', sans-serif !important;
+        font-size: 14pt !important;
+        line-height: 1.6 !important;
+        overflow-wrap: break-word !important;
+      }
+      header, #floating-scroll-nav, #generator-box, #settings-modal, #manual-details-modal, #glossary-modal, #ui-toast, .ui-tag, #manuals-library-section, #output-actions-header, button, nav {
+        display: none !important;
+      }
+      #output-container, #manual-view {
+        display: block !important;
+        background: #ffffff !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        color: #000000 !important;
+      }
+      h1, h2, h3, h4 {
+        color: #000000 !important;
+        page-break-after: avoid;
+      }
+      h1 { font-size: 20pt !important; font-weight: bold !important; text-align: center; margin-bottom: 12mm; }
+      h2 { font-size: 16pt !important; font-weight: bold !important; border-bottom: 1px solid #111 !important; margin-top: 10mm; padding-bottom: 2mm; }
+      h3 { font-size: 14pt !important; font-weight: bold !important; margin-top: 6mm; }
+      p, li { font-size: 14pt !important; color: #111111 !important; line-height: 1.6 !important; }
+      pre, code {
+        background: #f4f4f5 !important;
+        color: #000000 !important;
+        border: 1px solid #d4d4d8 !important;
+        font-family: 'Fira Code', monospace !important;
+        font-size: 11pt !important;
+        padding: 2px 4px !important;
+      }
+      pre { padding: 10px !important; margin: 4mm 0 !important; border-radius: 4px; }
+      table { width: 100% !important; border-collapse: collapse !important; margin-top: 4mm; }
+      th, td { border: 1px solid #333333 !important; padding: 6px 10px !important; color: #000000 !important; }
+      a { color: #000000 !important; text-decoration: underline !important; }
+    }
   </style>
 </head>
 <body class="min-h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white relative">
@@ -839,7 +890,7 @@ function renderHtmlApp(ssr?: SsrState): string {
     <div id="output-container" class="hidden space-y-6">
       
       <!-- Output Actions Header (Toolbar) -->
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl sticky top-20 z-40 backdrop-blur-xl">
+      <div id="output-actions-header" class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl sticky top-20 z-40 backdrop-blur-xl">
         <div>
           <div class="flex items-center gap-2 mb-1">
             <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">Reading View</span>
