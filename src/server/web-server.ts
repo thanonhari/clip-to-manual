@@ -13,6 +13,14 @@ interface RequestStat {
   lastResetDate: string;
 }
 
+interface SsrState {
+  hardware: string;
+  isKeyValid: boolean;
+  maskedKey: string;
+  manualsCount: number;
+  requestsToday: number;
+}
+
 const statsTracker: RequestStat = {
   todayCount: 0,
   lastResetDate: new Date().toISOString().slice(0, 10)
@@ -52,10 +60,29 @@ export function createServer(): http.Server {
     const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const pathname = parsedUrl.pathname;
 
-    // Static Web UI
+    // Static Web UI with Server-Side Pre-rendered State (Zero Latency)
     if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
+      const hardwareDesc = detectSystemHardware();
+      const envKey = process.env['GEMINI_API_KEY'] ?? '';
+      const isKeyValid = envKey.trim().length > 0 && !envKey.includes('ใส่คีย์');
+      const maskedKey = isKeyValid ? envKey.substring(0, 6) + '••••••••' + envKey.substring(Math.max(0, envKey.length - 4)) : '';
+
+      let manualsCount = 0;
+      try {
+        const files = await fs.readdir(manualsDir);
+        manualsCount = files.filter((f) => f.endsWith('.md')).length;
+      } catch {
+        // ignore
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(renderHtmlApp());
+      res.end(renderHtmlApp({
+        hardware: hardwareDesc,
+        isKeyValid,
+        maskedKey,
+        manualsCount,
+        requestsToday: statsTracker.todayCount
+      }));
       return;
     }
 
@@ -343,7 +370,18 @@ function readJsonBody<T>(req: http.IncomingMessage): Promise<T> {
   });
 }
 
-function renderHtmlApp(): string {
+function renderHtmlApp(ssr?: SsrState): string {
+  const hardware = ssr?.hardware || 'Intel Core Processor / Intel UHD Graphics';
+  const requestsToday = ssr?.requestsToday || 0;
+  const manualsCount = ssr?.manualsCount || 0;
+  const keyLabel = ssr?.isKeyValid ? 'AI Key (.env)' : 'Free Local Engine';
+  const keyBadgeClass = ssr?.isKeyValid 
+    ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
+    : 'bg-amber-950 text-amber-300 border-amber-800';
+  const keyMasked = ssr?.isKeyValid && ssr.maskedKey 
+    ? ssr.maskedKey 
+    : 'โหมดในตัว (กด ⚙️ ใส่คีย์ AI ได้)';
+
   return `<!DOCTYPE html>
 <html lang="th" class="h-full bg-slate-950 text-slate-100">
 <head>
@@ -376,7 +414,7 @@ function renderHtmlApp(): string {
       <div class="flex items-center space-x-3">
         <button onclick="openManualsLibrary()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 transition flex items-center gap-1.5 shadow-md">
           <span>📚</span>
-          <span>คลังคู่มือ & ปก (<span id="nav-manuals-count">0</span>)</span>
+          <span>คลังคู่มือ & ปก (<span id="nav-manuals-count">${manualsCount}</span>)</span>
         </button>
         <button onclick="toggleSettingsModal()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex items-center gap-1.5">
           <span>⚙️</span>
@@ -396,9 +434,9 @@ function renderHtmlApp(): string {
       <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur space-y-2">
         <div class="flex items-center justify-between text-xs text-slate-400">
           <span class="font-medium">🛡️ Gemini API Key</span>
-          <span id="dash-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">ตรวจสอบสถานะ...</span>
+          <span id="dash-key-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${keyBadgeClass}">${keyLabel}</span>
         </div>
-        <div id="dash-key-masked" class="text-xs font-mono font-bold text-indigo-300 truncate">พร้อมใช้งาน</div>
+        <div id="dash-key-masked" class="text-xs font-mono font-bold text-indigo-300 truncate">${keyMasked}</div>
         <div class="text-[11px] text-slate-500">ซ่อนอัตโนมัติ ปลอดภัยเวลาแชร์จอ</div>
       </div>
 
@@ -409,7 +447,7 @@ function renderHtmlApp(): string {
           <span class="text-emerald-400 font-bold">15 RPM</span>
         </div>
         <div class="text-lg font-bold text-white flex items-baseline gap-1.5">
-          <span id="dash-quota-used">0</span>
+          <span id="dash-quota-used">${requestsToday}</span>
           <span class="text-xs text-slate-500 font-normal">/ 1,500 คลิปต่อวัน</span>
         </div>
         <div class="w-full bg-slate-800 rounded-full h-1.5">
@@ -423,7 +461,7 @@ function renderHtmlApp(): string {
           <span class="font-medium">⚡ Extractor & Hardware</span>
           <span id="dash-ytdlp-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">yt-dlp พร้อม</span>
         </div>
-        <div id="dash-engine-desc" class="text-xs font-bold text-slate-200 truncate">กำลังตรวจจับฮาร์ดแวร์...</div>
+        <div id="dash-engine-desc" class="text-xs font-bold text-slate-200 truncate" title="${hardware}">${hardware}</div>
         <div class="text-[11px] text-slate-500">ดึง Chapters & ซับไตเติลแม่นยำ</div>
       </div>
 
@@ -434,7 +472,7 @@ function renderHtmlApp(): string {
           <span class="text-xs text-indigo-400 cursor-pointer hover:underline" onclick="openManualsLibrary()">ดูคลังปก &rarr;</span>
         </div>
         <div class="text-lg font-bold text-white flex items-baseline gap-1.5">
-          <span id="dash-manuals-count">0</span>
+          <span id="dash-manuals-count">${manualsCount}</span>
           <span class="text-xs text-slate-500 font-normal">คู่มือพร้อมรูปปก</span>
         </div>
         <div class="text-[11px] text-slate-500">จัดกลุ่มตามคอร์ส/เรื่องอัตโนมัติ</div>
@@ -629,25 +667,33 @@ function renderHtmlApp(): string {
     let allLoadedManuals = [];
     let selectedCategory = 'all';
 
-    window.addEventListener('DOMContentLoaded', () => {
+    function initApp() {
       fetchDashboardStats();
       loadManualsLibrary();
       const savedKey = localStorage.getItem('gemini_api_key');
       if (savedKey) {
-        document.getElementById('gemini-key-input').value = savedKey;
+        const inputEl = document.getElementById('gemini-key-input');
+        if (inputEl) inputEl.value = savedKey;
       }
 
-      // Allow pressing Enter in URL input to trigger 1-click generate
-      document.getElementById('yt-url-input').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          generateManualAction();
-        }
-      });
-    });
+      const urlInput = document.getElementById('yt-url-input');
+      if (urlInput) {
+        urlInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            generateManualAction();
+          }
+        });
+      }
+    }
+
+    // Run immediately and also on DOMContentLoaded
+    initApp();
+    window.addEventListener('DOMContentLoaded', initApp);
 
     function fillDemoUrl() {
       const demoUrl = 'https://www.youtube.com/watch?v=k85mRPqvMbE';
-      document.getElementById('yt-url-input').value = demoUrl;
+      const inputEl = document.getElementById('yt-url-input');
+      if (inputEl) inputEl.value = demoUrl;
       switchInputTab('yt');
       showAlert('ใส่ลิงก์คลิปตัวอย่างเรียบร้อยแล้ว กดปุ่ม "สร้างคู่มือการใช้งาน" ได้ทันทีครับ', 'success');
     }
@@ -663,33 +709,49 @@ function renderHtmlApp(): string {
           const keyMasked = document.getElementById('dash-key-masked');
           const browserKey = localStorage.getItem('gemini_api_key');
 
-          if (data.apiKeyStatus.configured) {
-            keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800';
-            keyBadge.textContent = 'AI Key (.env)';
-            keyMasked.textContent = data.apiKeyStatus.masked || 'Active in .env';
+          if (data.apiKeyStatus && data.apiKeyStatus.configured) {
+            if (keyBadge) {
+              keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800';
+              keyBadge.textContent = 'AI Key (.env)';
+            }
+            if (keyMasked) keyMasked.textContent = data.apiKeyStatus.masked || 'Active in .env';
           } else if (browserKey && browserKey.length > 5) {
-            keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800';
-            keyBadge.textContent = 'AI Key (Browser)';
-            keyMasked.textContent = browserKey.slice(0, 6) + '••••••••' + browserKey.slice(-4);
+            if (keyBadge) {
+              keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800';
+              keyBadge.textContent = 'AI Key (Browser)';
+            }
+            if (keyMasked) keyMasked.textContent = browserKey.slice(0, 6) + '••••••••' + browserKey.slice(-4);
           } else {
-            keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800';
-            keyBadge.textContent = 'Free Local Engine';
-            keyMasked.textContent = 'โหมดในตัว (กด ⚙️ ใส่คีย์ AI ได้)';
+            if (keyBadge) {
+              keyBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800';
+              keyBadge.textContent = 'Free Local Engine';
+            }
+            if (keyMasked) keyMasked.textContent = 'โหมดในตัว (กด ⚙️ ใส่คีย์ AI ได้)';
           }
 
           // Hardware
           if (data.engine && data.engine.hardware) {
-            document.getElementById('dash-engine-desc').textContent = data.engine.hardware;
+            const engineDesc = document.getElementById('dash-engine-desc');
+            if (engineDesc) {
+              engineDesc.textContent = data.engine.hardware;
+              engineDesc.title = data.engine.hardware;
+            }
           }
 
           // Quota
-          document.getElementById('dash-quota-used').textContent = data.quota.requestsToday;
-          const pct = Math.min(100, Math.max(1, (data.quota.requestsToday / data.quota.dailyLimit) * 100));
-          document.getElementById('dash-quota-bar').style.width = pct + '%';
+          if (data.quota) {
+            const quotaUsed = document.getElementById('dash-quota-used');
+            if (quotaUsed) quotaUsed.textContent = data.quota.requestsToday;
+            const pct = Math.min(100, Math.max(1, (data.quota.requestsToday / data.quota.dailyLimit) * 100));
+            const quotaBar = document.getElementById('dash-quota-bar');
+            if (quotaBar) quotaBar.style.width = pct + '%';
+          }
 
           // Manuals
-          document.getElementById('dash-manuals-count').textContent = data.manualsCount;
-          document.getElementById('nav-manuals-count').textContent = data.manualsCount;
+          const dashCount = document.getElementById('dash-manuals-count');
+          const navCount = document.getElementById('nav-manuals-count');
+          if (dashCount) dashCount.textContent = data.manualsCount;
+          if (navCount) navCount.textContent = data.manualsCount;
         }
       } catch (err) {
         console.warn('Failed to load stats:', err);
@@ -698,7 +760,7 @@ function renderHtmlApp(): string {
 
     async function loadManualsLibrary() {
       const container = document.getElementById('manuals-grid-container');
-      container.innerHTML = '<div class="col-span-full text-center py-8 text-xs text-slate-500">กำลังโหลดรายการคู่มือและรูปปก...</div>';
+      if (!container) return;
 
       try {
         const res = await fetch('/api/manuals');
@@ -715,6 +777,7 @@ function renderHtmlApp(): string {
 
     function renderCategoryTabs() {
       const tabsContainer = document.getElementById('manual-category-tabs');
+      if (!tabsContainer) return;
       const categories = Array.from(new Set(allLoadedManuals.map(m => m.topic || 'ทั่วไป')));
       
       let html = '<button onclick="selectCategory(' + "'all'" + ')" class="px-3 py-1 rounded-lg text-xs font-semibold transition ' + (selectedCategory === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200') + '">ทั้งหมด (' + allLoadedManuals.length + ')</button>';
@@ -735,8 +798,10 @@ function renderHtmlApp(): string {
     }
 
     function filterManualsGrid() {
-      const query = (document.getElementById('manual-search-input').value || '').toLowerCase().trim();
+      const inputEl = document.getElementById('manual-search-input');
+      const query = (inputEl ? inputEl.value : '').toLowerCase().trim();
       const container = document.getElementById('manuals-grid-container');
+      if (!container) return;
 
       const filtered = allLoadedManuals.filter(m => {
         const matchesCategory = selectedCategory === 'all' || m.topic === selectedCategory;
@@ -776,12 +841,15 @@ function renderHtmlApp(): string {
     }
 
     function openManualsLibrary() {
-      document.getElementById('manuals-library-section').scrollIntoView({ behavior: 'smooth' });
+      const section = document.getElementById('manuals-library-section');
+      if (section) section.scrollIntoView({ behavior: 'smooth' });
     }
 
     function closeManualView() {
-      document.getElementById('output-container').classList.add('hidden');
-      document.getElementById('manuals-library-section').scrollIntoView({ behavior: 'smooth' });
+      const outContainer = document.getElementById('output-container');
+      if (outContainer) outContainer.classList.add('hidden');
+      const section = document.getElementById('manuals-library-section');
+      if (section) section.scrollIntoView({ behavior: 'smooth' });
     }
 
     async function viewSavedManual(encodedFileName) {
@@ -791,14 +859,18 @@ function renderHtmlApp(): string {
         currentMarkdownOutput = mdText;
         
         const firstLine = mdText.split('\n')[0]?.replace(/^#\s*📖?\s*/, '') || 'คู่มือการใช้งาน';
-        document.getElementById('reading-manual-title').textContent = firstLine;
+        const titleEl = document.getElementById('reading-manual-title');
+        if (titleEl) titleEl.textContent = firstLine;
 
-        // Render Markdown with clickable YouTube timestamps and beautiful cards
         const renderedHtml = renderMarkdownToHtml(mdText);
-        document.getElementById('manual-view').innerHTML = renderedHtml;
+        const manualView = document.getElementById('manual-view');
+        if (manualView) manualView.innerHTML = renderedHtml;
 
-        document.getElementById('output-container').classList.remove('hidden');
-        document.getElementById('output-container').scrollIntoView({ behavior: 'smooth' });
+        const outContainer = document.getElementById('output-container');
+        if (outContainer) {
+          outContainer.classList.remove('hidden');
+          outContainer.scrollIntoView({ behavior: 'smooth' });
+        }
       } catch (err) {
         showAlert('ไม่สามารถเปิดไฟล์คู่มือได้: ' + err.message, 'error');
       }
@@ -836,11 +908,12 @@ function renderHtmlApp(): string {
 
     function toggleSettingsModal() {
       const modal = document.getElementById('settings-modal');
-      modal.classList.toggle('hidden');
+      if (modal) modal.classList.toggle('hidden');
     }
 
     function saveSettings() {
-      const key = document.getElementById('gemini-key-input').value.trim();
+      const inputEl = document.getElementById('gemini-key-input');
+      const key = inputEl ? inputEl.value.trim() : '';
       if (key) {
         localStorage.setItem('gemini_api_key', key);
       } else {
@@ -858,15 +931,15 @@ function renderHtmlApp(): string {
       const subContent = document.getElementById('tab-sub-content');
 
       if (tab === 'yt') {
-        ytBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
-        subBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
-        ytContent.classList.remove('hidden');
-        subContent.classList.add('hidden');
+        if (ytBtn) ytBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
+        if (subBtn) subBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
+        if (ytContent) ytContent.classList.remove('hidden');
+        if (subContent) subContent.classList.add('hidden');
       } else {
-        subBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
-        ytBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
-        subContent.classList.remove('hidden');
-        ytContent.classList.add('hidden');
+        if (subBtn) subBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2';
+        if (ytBtn) ytBtn.className = 'pb-2 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2';
+        if (subContent) subContent.classList.remove('hidden');
+        if (ytContent) ytContent.classList.add('hidden');
       }
     }
 
@@ -877,7 +950,8 @@ function renderHtmlApp(): string {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const text = e.target.result;
-        document.getElementById('subtitle-textarea').value = text;
+        const subArea = document.getElementById('subtitle-textarea');
+        if (subArea) subArea.value = text;
         await parseUploadedSubtitle(text);
       };
       reader.readAsText(file);
@@ -904,7 +978,8 @@ function renderHtmlApp(): string {
     }
 
     async function fetchYouTubeTranscript() {
-      const url = document.getElementById('yt-url-input').value.trim();
+      const inputEl = document.getElementById('yt-url-input');
+      const url = inputEl ? inputEl.value.trim() : '';
       if (!url) {
         showAlert('กรุณากรอกหรือวาง YouTube URL', 'error');
         return false;
@@ -943,23 +1018,27 @@ function renderHtmlApp(): string {
       const labelEl = document.getElementById('transcript-status-label');
       const contentEl = document.getElementById('transcript-raw-content');
 
-      labelEl.textContent = label;
-      contentEl.innerHTML = segments.slice(0, 150).map(s => '<div class="flex gap-2"><span class="text-indigo-400 shrink-0">[' + s.formattedTime + ']</span><span>' + escapeHtml(s.text) + '</span></div>').join('');
-      box.classList.remove('hidden');
+      if (labelEl) labelEl.textContent = label;
+      if (contentEl) {
+        contentEl.innerHTML = segments.slice(0, 150).map(s => '<div class="flex gap-2"><span class="text-indigo-400 shrink-0">[' + s.formattedTime + ']</span><span>' + escapeHtml(s.text) + '</span></div>').join('');
+      }
+      if (box) box.classList.remove('hidden');
     }
 
     function toggleTranscriptView() {
       const el = document.getElementById('transcript-raw-content');
-      el.classList.toggle('hidden');
+      if (el) el.classList.toggle('hidden');
     }
 
     async function generateManualAction() {
       let transcript = currentRawTranscript;
-      const urlInput = document.getElementById('yt-url-input').value.trim();
-      const subText = document.getElementById('subtitle-textarea').value.trim();
+      const urlInput = document.getElementById('yt-url-input');
+      const urlVal = urlInput ? urlInput.value.trim() : '';
+      const subArea = document.getElementById('subtitle-textarea');
+      const subText = subArea ? subArea.value.trim() : '';
 
       // If transcript not yet extracted, but YouTube URL is provided: Auto 1-Click Pull!
-      if (!transcript && urlInput) {
+      if (!transcript && urlVal) {
         setLoading(true, '[1/2] 📥 กำลังดึงข้อมูลและซับไตเติลจาก YouTube...');
         const fetched = await fetchYouTubeTranscript();
         if (fetched) {
@@ -977,7 +1056,8 @@ function renderHtmlApp(): string {
         return;
       }
 
-      const lang = document.getElementById('lang-select').value;
+      const langSelect = document.getElementById('lang-select');
+      const lang = langSelect ? langSelect.value : 'th';
       const apiKey = localStorage.getItem('gemini_api_key') || '';
 
       setLoading(true, '[2/2] ✨ AI กำลังวิเคราะห์วิดีโอ สกัดฟังก์ชัน และเรียบเรียงคู่มือทีละ Step...');
@@ -987,7 +1067,7 @@ function renderHtmlApp(): string {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            youtubeUrl: currentVideoUrl || urlInput,
+            youtubeUrl: currentVideoUrl || urlVal,
             rawTranscript: transcript,
             language: lang,
             apiKey: apiKey
@@ -998,8 +1078,11 @@ function renderHtmlApp(): string {
         if (data.success && data.manual) {
           currentMarkdownOutput = data.markdown || '';
           renderManualUi(data.manual);
-          document.getElementById('output-container').classList.remove('hidden');
-          document.getElementById('output-container').scrollIntoView({ behavior: 'smooth' });
+          const outContainer = document.getElementById('output-container');
+          if (outContainer) {
+            outContainer.classList.remove('hidden');
+            outContainer.scrollIntoView({ behavior: 'smooth' });
+          }
           fetchDashboardStats();
           loadManualsLibrary();
           showAlert('🎉 สร้างคู่มือการใช้งานสำเร็จและบันทึกลงคลังเรียบร้อย!', 'success');
@@ -1015,6 +1098,7 @@ function renderHtmlApp(): string {
 
     function renderManualUi(m) {
       const view = document.getElementById('manual-view');
+      if (!view) return;
       const isThai = m.language === 'th';
 
       let html = '';
@@ -1170,6 +1254,7 @@ function renderHtmlApp(): string {
 
     function showAlert(msg, type) {
       const el = document.getElementById('status-alert');
+      if (!el) return;
       el.className = 'p-4 rounded-xl text-xs font-medium border ' + (type === 'success' ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200' : 'bg-rose-950/60 border-rose-800 text-rose-200');
       el.textContent = msg;
       el.classList.remove('hidden');
@@ -1178,12 +1263,9 @@ function renderHtmlApp(): string {
     function setLoading(isLoading, text = '') {
       const btn = document.getElementById('generate-btn');
       const btnText = document.getElementById('generate-btn-text');
-      if (isLoading) {
-        btn.disabled = true;
-        btnText.textContent = text || 'กำลังประมวลผล...';
-      } else {
-        btn.disabled = false;
-        btnText.textContent = 'สร้างคู่มือการใช้งาน (1-Click Generate)';
+      if (btn) btn.disabled = isLoading;
+      if (btnText) {
+        btnText.textContent = isLoading ? (text || 'กำลังประมวลผล...') : 'สร้างคู่มือการใช้งาน (1-Click Generate)';
       }
     }
 
